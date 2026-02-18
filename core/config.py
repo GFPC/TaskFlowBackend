@@ -42,8 +42,7 @@ class Settings:
     API_HOST = os.getenv('API_HOST', 'localhost')
     API_PORT = int(os.getenv('API_PORT', 8000))
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:8000",
+        "*",
     ]
 
     # Frontend
