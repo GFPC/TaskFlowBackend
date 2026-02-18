@@ -1,0 +1,6 @@
+fastapi
+peewee
+bcrypt
+python-dotenv
+pytest
+requests
