@@ -1,6 +1,10 @@
 .venv
 __pycache__
+.venv
 .env
+.vscode
 .idea
-pytest-cache-files-vbmtgbx3
+pytest-cache-files-*
 taskflow.egg-info
+.DS_Store
+Thumbs.db
