@@ -11,7 +11,8 @@ IS_TESTING = os.environ.get('TESTING') == '1'
 
 # Настройки БД
 if IS_TESTING:
-    database = SqliteDatabase(':memory:')
+    # database = SqliteDatabase(':memory:')
+    database = SqliteDatabase('taskflow.db')
 else:
     try:
         import pymysql

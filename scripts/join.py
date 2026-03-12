@@ -20,8 +20,6 @@ file_list = list_files('core', ('py', ), True) + list_files('.', ('py', ))
 
 out = open('joined.txt', 'w', encoding='utf-8')
 for fp in file_list:
-    if 'bootstrap.' in fp:
-        continue
     out.write(fp + '\n')
     out.write(open(fp, 'r', encoding='utf-8').read() + '\n')
 out.close()

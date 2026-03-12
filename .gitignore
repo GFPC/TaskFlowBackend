@@ -9,3 +9,5 @@ taskflow.egg-info
 .DS_Store
 Thumbs.db
 joined.txt
+*.db
+*.sqlite
