@@ -1,16 +1,15 @@
 import json
-
-from peewee import *
-from datetime import datetime, timedelta
-import bcrypt
-import secrets
 import re
-from typing import Optional, Dict, Any, Tuple, List
+import secrets
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
+import bcrypt
+from fastapi import HTTPException, status
+from peewee import *
 from peewee import logger
 
-from ..db.models.user import User, UserRole, AuthSession, RecoveryCode, AuthLog
-from fastapi import HTTPException, status
+from ..db.models.user import AuthLog, AuthSession, RecoveryCode, User, UserRole
 
 
 class UserService:
@@ -40,13 +39,22 @@ class UserService:
             return False, "Username is required"
 
         if len(username) < self.USERNAME_MIN_LENGTH:
-            return False, f"Username must be at least {self.USERNAME_MIN_LENGTH} characters"
+            return (
+                False,
+                f"Username must be at least {self.USERNAME_MIN_LENGTH} characters",
+            )
 
         if len(username) > self.USERNAME_MAX_LENGTH:
-            return False, f"Username must be at most {self.USERNAME_MAX_LENGTH} characters"
+            return (
+                False,
+                f"Username must be at most {self.USERNAME_MAX_LENGTH} characters",
+            )
 
         if not re.match("^[a-zA-Z0-9_.-]+$", username):
-            return False, "Username can only contain letters, numbers, underscores, dots and hyphens"
+            return (
+                False,
+                "Username can only contain letters, numbers, underscores, dots and hyphens",
+            )
 
         return True, None
 
@@ -56,7 +64,10 @@ class UserService:
             return False, "Password is required"
 
         if len(password) < self.PASSWORD_MIN_LENGTH:
-            return False, f"Password must be at least {self.PASSWORD_MIN_LENGTH} characters"
+            return (
+                False,
+                f"Password must be at least {self.PASSWORD_MIN_LENGTH} characters",
+            )
 
         # Проверка на сложность
         has_upper = any(c.isupper() for c in password)
@@ -65,7 +76,10 @@ class UserService:
         has_special = any(not c.isalnum() for c in password)
 
         if not (has_upper and has_lower and has_digit):
-            return False, "Password must contain uppercase, lowercase and digit characters"
+            return (
+                False,
+                "Password must contain uppercase, lowercase and digit characters",
+            )
 
         return True, None
 
@@ -74,7 +88,7 @@ class UserService:
         if not email:
             return True, None  # Email не обязателен
 
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(pattern, email):
             return False, "Invalid email format"
 
@@ -83,11 +97,11 @@ class UserService:
     def _hash_password(self, password: str) -> str:
         """Хеширование пароля"""
         salt = bcrypt.gensalt()
-        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+        return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
     def _verify_password(self, password: str, password_hash: str) -> bool:
         """Проверка пароля"""
-        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
     # ------------------- Роли -------------------
 
@@ -95,22 +109,24 @@ class UserService:
         """Получение роли по умолчанию (Работник)"""
         try:
             role, created = self.role_model.get_or_create(
-                name='Работник',
+                name="Работник",
                 defaults={
-                    'description': 'Стандартный пользователь системы',
-                    'priority': 1,
-                    'permissions': json.dumps({
-                        'view_tasks': True,
-                        'view_own_tasks': True,
-                        'update_own_tasks': True,
-                        'add_comments': True
-                    })
-                }
+                    "description": "Стандартный пользователь системы",
+                    "priority": 1,
+                    "permissions": json.dumps(
+                        {
+                            "view_tasks": True,
+                            "view_own_tasks": True,
+                            "update_own_tasks": True,
+                            "add_comments": True,
+                        }
+                    ),
+                },
             )
             return role
         except Exception as e:
             # Если роль уже существует
-            return self.role_model.get(name='Работник')
+            return self.role_model.get(name="Работник")
 
     def get_role_by_name(self, name: str) -> Optional[UserRole]:
         """Получение роли по имени"""
@@ -121,13 +137,15 @@ class UserService:
 
     # ------------------- Регистрация -------------------
 
-    def register(self,
-                 first_name: str,
-                 last_name: str,
-                 username: str,
-                 password: str,
-                 email: Optional[str] = None,
-                 tg_username: Optional[str] = None) -> Dict[str, Any]:
+    def register(
+        self,
+        first_name: str,
+        last_name: str,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        tg_username: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Регистрация нового пользователя
         Возвращает данные пользователя и TG код для верификации
@@ -146,13 +164,25 @@ class UserService:
             raise ValueError(f"Invalid email: {error}")
 
         # Проверка уникальности
-        if self.user_model.select().where(self.user_model.username == username).exists():
+        if (
+            self.user_model.select()
+            .where(self.user_model.username == username)
+            .exists()
+        ):
             raise ValueError("Username already taken")
 
-        if email and self.user_model.select().where(self.user_model.email == email).exists():
+        if (
+            email
+            and self.user_model.select().where(self.user_model.email == email).exists()
+        ):
             raise ValueError("Email already registered")
 
-        if tg_username and self.user_model.select().where(self.user_model.tg_username == tg_username).exists():
+        if (
+            tg_username
+            and self.user_model.select()
+            .where(self.user_model.tg_username == tg_username)
+            .exists()
+        ):
             raise ValueError("Telegram username already registered")
 
         # Получаем роль по умолчанию
@@ -172,11 +202,9 @@ class UserService:
             role=default_role,
             is_active=True,
             is_verified=False,
-            theme_preferences=json.dumps({
-                "mode": "light",
-                "primary_color": "#1976d2",
-                "language": "ru"
-            })
+            theme_preferences=json.dumps(
+                {"mode": "system", "primary_color": "#1976d2", "language": "ru"}
+            ),
         )
 
         # Генерируем код для Telegram
@@ -184,26 +212,20 @@ class UserService:
         user.save()
 
         # Логируем регистрацию
-        self.log_model.log(
-            action='register',
-            status='success',
-            user=user
-        )
+        self.log_model.log(action="register", status="success", user=user)
 
-        return {
-            'user': user,
-            'tg_code': tg_code,
-            'requires_verification': True
-        }
+        return {"user": user, "tg_code": tg_code, "requires_verification": True}
 
     # ------------------- Аутентификация -------------------
 
-    def login(self,
-              username: str,
-              password: str,
-              ip: Optional[str] = None,
-              user_agent: Optional[str] = None,
-              device_id: Optional[str] = None) -> Dict[str, Any]:
+    def login(
+        self,
+        username: str,
+        password: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Аутентификация пользователя
         Возвращает сессию и флаг необходимости TG кода
@@ -211,31 +233,34 @@ class UserService:
         try:
             # Ищем пользователя
             user = self.user_model.get(
-                (self.user_model.username == username.lower().strip()) &
-                (self.user_model.is_active == True)
+                (self.user_model.username == username.lower().strip())
+                & (self.user_model.is_active == True)
             )
 
             # Проверяем пароль
             if not self._verify_password(password, user.password_hash):
                 # Логируем неудачную попытку
                 self.log_model.log(
-                    action='login',
-                    status='failed',
+                    action="login",
+                    status="failed",
                     username=username,
                     ip=ip,
                     user_agent=user_agent,
-                    reason='Invalid password'
+                    reason="Invalid password",
                 )
                 raise ValueError("Invalid username or password")
 
             # ТЕСТОВЫЙ РЕЖИМ - пропускаем верификацию
             from ..config import settings
+
             if settings.DEBUG:
                 # В режиме отладки автоматически верифицируем
                 if not user.tg_verified:
                     user.tg_verified = True
                     # Используем ID пользователя как основу для уникальности
-                    user.tg_id = 1000000 + user.id  # Уникальный ID для каждого пользователя
+                    user.tg_id = (
+                        1000000 + user.id
+                    )  # Уникальный ID для каждого пользователя
                     user.tg_chat_id = -(1000000 + user.id)  # Уникальный chat_id
                     user.save()
 
@@ -246,19 +271,19 @@ class UserService:
                 user.save()
 
                 return {
-                    'requires_verification': True,
-                    'user_id': user.id,
-                    'tg_code': tg_code,
-                    'session': None
+                    "requires_verification": True,
+                    "user_id": user.id,
+                    "tg_code": tg_code,
+                    "session": None,
                 }
 
             # Создаем сессию
             session = self.session_model.create_session(
                 user=user,
-                session_type='web',
+                session_type="web",
                 ip=ip,
                 user_agent=user_agent,
-                device_id=device_id
+                device_id=device_id,
             )
 
             # Обновляем информацию о пользователе
@@ -268,47 +293,48 @@ class UserService:
 
             # Логируем успешный вход
             self.log_model.log(
-                action='login',
-                status='success',
+                action="login",
+                status="success",
                 user=user,
                 ip=ip,
-                user_agent=user_agent
+                user_agent=user_agent,
             )
 
             return {
-                'requires_verification': False,
-                'user': user,
-                'session': session,
-                'access_token': session.token,
-                'refresh_token': session.refresh_token,
-                'token_type': 'bearer',
-                'expires_at': session.expires_at
+                "requires_verification": False,
+                "user": user,
+                "session": session,
+                "access_token": session.token,
+                "refresh_token": session.refresh_token,
+                "token_type": "bearer",
+                "expires_at": session.expires_at,
             }
 
         except self.user_model.DoesNotExist:
             # Логируем неудачную попытку
             self.log_model.log(
-                action='login',
-                status='failed',
+                action="login",
+                status="failed",
                 username=username,
                 ip=ip,
                 user_agent=user_agent,
-                reason='User not found'
+                reason="User not found",
             )
             raise ValueError("Invalid username or password")
 
-    def verify_telegram_code(self,
-                             user_id: int,
-                             code: str,
-                             tg_id: Optional[int] = None,
-                             tg_chat_id: Optional[int] = None) -> Dict[str, Any]:
+    def verify_telegram_code(
+        self,
+        user_id: int,
+        code: str,
+        tg_id: Optional[int] = None,
+        tg_chat_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Верификация Telegram кода
         """
         try:
             user = self.user_model.get(
-                (self.user_model.id == user_id) &
-                (self.user_model.is_active == True)
+                (self.user_model.id == user_id) & (self.user_model.is_active == True)
             )
 
             # Проверяем код
@@ -324,26 +350,22 @@ class UserService:
                 session = self.session_model.create_session(user)
 
                 # Логируем верификацию
-                self.log_model.log(
-                    action='verify',
-                    status='success',
-                    user=user
-                )
+                self.log_model.log(action="verify", status="success", user=user)
 
                 return {
-                    'success': True,
-                    'user': user,
-                    'session': session,
-                    'access_token': session.token,
-                    'refresh_token': session.refresh_token
+                    "success": True,
+                    "user": user,
+                    "session": session,
+                    "access_token": session.token,
+                    "refresh_token": session.refresh_token,
                 }
             else:
                 # Логируем неудачную верификацию
                 self.log_model.log(
-                    action='verify',
-                    status='failed',
+                    action="verify",
+                    status="failed",
                     user=user,
-                    reason='Invalid or expired code'
+                    reason="Invalid or expired code",
                 )
                 raise ValueError("Invalid or expired verification code")
 
@@ -356,9 +378,9 @@ class UserService:
         """
         try:
             session = self.session_model.get(
-                (self.session_model.refresh_token == refresh_token) &
-                (self.session_model.is_active == True) &
-                (self.session_model.is_blocked == False)
+                (self.session_model.refresh_token == refresh_token)
+                & (self.session_model.is_active == True)
+                & (self.session_model.is_blocked == False)
             )
 
             # Проверяем валидность refresh токена
@@ -370,16 +392,12 @@ class UserService:
             new_token = session.refresh()
 
             # Логируем обновление
-            self.log_model.log(
-                action='refresh',
-                status='success',
-                user=session.user
-            )
+            self.log_model.log(action="refresh", status="success", user=session.user)
 
             return {
-                'access_token': new_token,
-                'refresh_token': session.refresh_token,
-                'expires_at': session.expires_at
+                "access_token": new_token,
+                "refresh_token": session.refresh_token,
+                "expires_at": session.expires_at,
             }
 
         except self.session_model.DoesNotExist:
@@ -391,19 +409,15 @@ class UserService:
         """
         try:
             session = self.session_model.get(
-                (self.session_model.token == token) &
-                (self.session_model.is_active == True)
+                (self.session_model.token == token)
+                & (self.session_model.is_active == True)
             )
 
             user = session.user
             session.invalidate()
 
             # Логируем выход
-            self.log_model.log(
-                action='logout',
-                status='success',
-                user=user
-            )
+            self.log_model.log(action="logout", status="success", user=user)
 
             return True
 
@@ -416,8 +430,8 @@ class UserService:
         Возвращает количество завершенных сессий
         """
         query = self.session_model.select().where(
-            (self.session_model.user_id == user_id) &
-            (self.session_model.is_active == True)
+            (self.session_model.user_id == user_id)
+            & (self.session_model.is_active == True)
         )
 
         if exclude_token:
@@ -431,11 +445,7 @@ class UserService:
         if count > 0:
             # Логируем завершение всех сессий
             user = self.user_model.get_by_id(user_id)
-            self.log_model.log(
-                action='logout_all',
-                status='success',
-                user=user
-            )
+            self.log_model.log(action="logout_all", status="success", user=user)
 
         return count
 
@@ -447,41 +457,35 @@ class UserService:
         """
         try:
             user = self.user_model.get(
-                (self.user_model.username == username.lower().strip()) &
-                (self.user_model.is_active == True)
+                (self.user_model.username == username.lower().strip())
+                & (self.user_model.is_active == True)
             )
 
             # Создаем код восстановления
             recovery = self.recovery_model.create_for_user(
-                user=user,
-                expires_in_hours=self.RECOVERY_EXPIRY_HOURS
+                user=user, expires_in_hours=self.RECOVERY_EXPIRY_HOURS
             )
 
             # Логируем запрос
-            self.log_model.log(
-                action='recovery',
-                status='success',
-                user=user
-            )
+            self.log_model.log(action="recovery", status="success", user=user)
 
             return {
-                'success': True,
-                'user_id': user.id,
-                'recovery_code': recovery.code,
-                'expires_at': recovery.expires_at
+                "success": True,
+                "user_id": user.id,
+                "recovery_code": recovery.code,
+                "expires_at": recovery.expires_at,
             }
 
         except self.user_model.DoesNotExist:
             # Не сообщаем, что пользователь не найден
             return {
-                'success': False,
-                'message': 'If user exists, recovery code will be sent'
+                "success": False,
+                "message": "If user exists, recovery code will be sent",
             }
 
-    def reset_password(self,
-                       recovery_code: str,
-                       new_password: str,
-                       ip: Optional[str] = None) -> Dict[str, Any]:
+    def reset_password(
+        self, recovery_code: str, new_password: str, ip: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Сброс пароля с использованием кода восстановления
         """
@@ -517,16 +521,10 @@ class UserService:
 
             # Логируем сброс пароля
             self.log_model.log(
-                action='reset_password',
-                status='success',
-                user=user,
-                ip=ip
+                action="reset_password", status="success", user=user, ip=ip
             )
 
-            return {
-                'success': True,
-                'message': 'Password successfully reset'
-            }
+            return {"success": True, "message": "Password successfully reset"}
 
         except self.recovery_model.DoesNotExist:
             raise ValueError("Invalid recovery code")
@@ -539,8 +537,7 @@ class UserService:
         """
         try:
             return self.user_model.get(
-                (self.user_model.id == user_id) &
-                (self.user_model.is_active == True)
+                (self.user_model.id == user_id) & (self.user_model.is_active == True)
             )
         except self.user_model.DoesNotExist:
             return None
@@ -551,8 +548,8 @@ class UserService:
         """
         try:
             return self.user_model.get(
-                (self.user_model.username == username.lower().strip()) &
-                (self.user_model.is_active == True)
+                (self.user_model.username == username.lower().strip())
+                & (self.user_model.is_active == True)
             )
         except self.user_model.DoesNotExist:
             return None
@@ -563,18 +560,19 @@ class UserService:
         """
         try:
             return self.user_model.get(
-                (self.user_model.tg_id == tg_id) &
-                (self.user_model.is_active == True)
+                (self.user_model.tg_id == tg_id) & (self.user_model.is_active == True)
             )
         except self.user_model.DoesNotExist:
             return None
 
-    def update_profile(self,
-                       user_id: int,
-                       first_name: Optional[str] = None,
-                       last_name: Optional[str] = None,
-                       email: Optional[str] = None,
-                       tg_username: Optional[str] = None) -> User:
+    def update_profile(
+        self,
+        user_id: int,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        email: Optional[str] = None,
+        tg_username: Optional[str] = None,
+    ) -> User:
         """
         Обновление профиля пользователя
         """
@@ -596,10 +594,14 @@ class UserService:
 
             # Проверяем уникальность
             if email != user.email:
-                exists = self.user_model.select().where(
-                    (self.user_model.email == email) &
-                    (self.user_model.id != user_id)
-                ).exists()
+                exists = (
+                    self.user_model.select()
+                    .where(
+                        (self.user_model.email == email)
+                        & (self.user_model.id != user_id)
+                    )
+                    .exists()
+                )
                 if exists:
                     raise ValueError("Email already registered")
                 user.email = email.strip() if email else None
@@ -607,10 +609,14 @@ class UserService:
         if tg_username is not None:
             # Проверяем уникальность
             if tg_username != user.tg_username:
-                exists = self.user_model.select().where(
-                    (self.user_model.tg_username == tg_username) &
-                    (self.user_model.id != user_id)
-                ).exists()
+                exists = (
+                    self.user_model.select()
+                    .where(
+                        (self.user_model.tg_username == tg_username)
+                        & (self.user_model.id != user_id)
+                    )
+                    .exists()
+                )
                 if exists:
                     raise ValueError("Telegram username already registered")
                 user.tg_username = tg_username.strip() if tg_username else None
@@ -623,18 +629,13 @@ class UserService:
         user.save()
 
         # Логируем обновление
-        self.log_model.log(
-            action='update_profile',
-            status='success',
-            user=user
-        )
+        self.log_model.log(action="update_profile", status="success", user=user)
 
         return user
 
-    def change_password(self,
-                        user_id: int,
-                        current_password: str,
-                        new_password: str) -> bool:
+    def change_password(
+        self, user_id: int, current_password: str, new_password: str
+    ) -> bool:
         """
         Смена пароля
         """
@@ -659,17 +660,13 @@ class UserService:
         # (текущая сессия будет передана отдельно)
 
         # Логируем смену пароля
-        self.log_model.log(
-            action='change_password',
-            status='success',
-            user=user
-        )
+        self.log_model.log(action="change_password", status="success", user=user)
 
         return True
 
-    def update_theme_preferences(self,
-                                 user_id: int,
-                                 theme_data: Dict[str, Any]) -> Dict[str, Any]:
+    def update_theme_preferences(
+        self, user_id: int, theme_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Обновление настроек темы
         """
@@ -685,9 +682,9 @@ class UserService:
 
         return current_theme
 
-    def update_notification_settings(self,
-                                     user_id: int,
-                                     settings: Dict[str, Any]) -> Dict[str, Any]:
+    def update_notification_settings(
+        self, user_id: int, settings: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Обновление настроек уведомлений
         """
@@ -711,9 +708,9 @@ class UserService:
         """
         try:
             session = self.session_model.get(
-                (self.session_model.token == token) &
-                (self.session_model.is_active == True) &
-                (self.session_model.is_blocked == False)
+                (self.session_model.token == token)
+                & (self.session_model.is_active == True)
+                & (self.session_model.is_blocked == False)
             )
 
             if not session.is_valid():
@@ -734,18 +731,18 @@ class UserService:
         except self.session_model.DoesNotExist:
             return None
 
-    def get_user_sessions(self, user_id: int, active_only: bool = True) -> List[AuthSession]:
+    def get_user_sessions(
+        self, user_id: int, active_only: bool = True
+    ) -> List[AuthSession]:
         """
         Получение всех сессий пользователя
         """
-        query = self.session_model.select().where(
-            self.session_model.user_id == user_id
-        )
+        query = self.session_model.select().where(self.session_model.user_id == user_id)
 
         if active_only:
             query = query.where(
-                (self.session_model.is_active == True) &
-                (self.session_model.is_blocked == False)
+                (self.session_model.is_active == True)
+                & (self.session_model.is_blocked == False)
             )
 
         return list(query.order_by(self.session_model.created_at.desc()))
@@ -756,8 +753,8 @@ class UserService:
         """
         try:
             session = self.session_model.get(
-                (self.session_model.id == session_id) &
-                (self.session_model.user_id == user_id)
+                (self.session_model.id == session_id)
+                & (self.session_model.user_id == user_id)
             )
 
             session.invalidate()
@@ -776,7 +773,7 @@ class UserService:
         if not admin_user.is_superuser:
             # Проверяем роль
             admin_role = admin_user.role
-            if admin_role.name not in ['Хозяин', 'Менеджер проекта']:
+            if admin_role.name not in ["Хозяин", "Менеджер проекта"]:
                 raise PermissionError("Insufficient permissions to change user roles")
 
         user = self.get_user_by_id(user_id)
@@ -793,10 +790,10 @@ class UserService:
 
         # Логируем изменение
         self.log_model.log(
-            action='change_role',
-            status='success',
+            action="change_role",
+            status="success",
             user=user,
-            reason=f"Role changed to {role_name} by {admin_user.username}"
+            reason=f"Role changed to {role_name} by {admin_user.username}",
         )
 
         return user
@@ -820,10 +817,10 @@ class UserService:
 
         # Логируем деактивацию
         self.log_model.log(
-            action='deactivate',
-            status='success',
+            action="deactivate",
+            status="success",
             user=user,
-            reason=f"User deactivated by {admin_user.username}"
+            reason=f"User deactivated by {admin_user.username}",
         )
 
         return True
@@ -842,10 +839,10 @@ class UserService:
 
             # Логируем активацию
             self.log_model.log(
-                action='activate',
-                status='success',
+                action="activate",
+                status="success",
                 user=user,
-                reason=f"User activated by {admin_user.username}"
+                reason=f"User activated by {admin_user.username}",
             )
 
             return True
@@ -855,12 +852,14 @@ class UserService:
 
     # ------------------- Поиск и фильтрация -------------------
 
-    def search_users(self,
-                     query: Optional[str] = None,
-                     role_id: Optional[int] = None,
-                     is_active: Optional[bool] = None,
-                     limit: int = 20,
-                     offset: int = 0) -> List[User]:
+    def search_users(
+        self,
+        query: Optional[str] = None,
+        role_id: Optional[int] = None,
+        is_active: Optional[bool] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> List[User]:
         """
         Поиск пользователей с фильтрацией
         """
@@ -869,11 +868,11 @@ class UserService:
         if query:
             search = f"%{query}%"
             conditions.append(
-                (self.user_model.first_name ** search) |
-                (self.user_model.last_name ** search) |
-                (self.user_model.username ** search) |
-                (self.user_model.email ** search) |
-                (self.user_model.tg_username ** search)
+                (self.user_model.first_name**search)
+                | (self.user_model.last_name**search)
+                | (self.user_model.username**search)
+                | (self.user_model.email**search)
+                | (self.user_model.tg_username**search)
             )
 
         if role_id:
@@ -885,6 +884,7 @@ class UserService:
         query = self.user_model.select()
         if conditions:
             from peewee import SQL
+
             query = query.where(*conditions)
 
         return list(
@@ -898,23 +898,29 @@ class UserService:
         Статистика по пользователям
         """
         total = self.user_model.select().count()
-        active = self.user_model.select().where(self.user_model.is_active == True).count()
-        verified = self.user_model.select().where(self.user_model.tg_verified == True).count()
+        active = (
+            self.user_model.select().where(self.user_model.is_active == True).count()
+        )
+        verified = (
+            self.user_model.select().where(self.user_model.tg_verified == True).count()
+        )
 
         # Статистика по ролям
         role_stats = {}
         for role in self.role_model.select():
-            count = self.user_model.select().where(
-                self.user_model.role_id == role.id
-            ).count()
+            count = (
+                self.user_model.select()
+                .where(self.user_model.role_id == role.id)
+                .count()
+            )
             role_stats[role.name] = count
 
         return {
-            'total_users': total,
-            'active_users': active,
-            'inactive_users': total - active,
-            'verified_telegram': verified,
-            'by_role': role_stats
+            "total_users": total,
+            "active_users": active,
+            "inactive_users": total - active,
+            "verified_telegram": verified,
+            "by_role": role_stats,
         }
 
     async def send_telegram_code(self, user_id: int) -> Optional[str]:
@@ -929,33 +935,32 @@ class UserService:
 
         # Отправляем код через бота
         from core.bot.client import get_bot
+
         bot = get_bot()
 
         success = await bot.send_verification_code(
-            chat_id=user.tg_chat_id,
-            code=user.tg_code
+            chat_id=user.tg_chat_id, code=user.tg_code
         )
 
         return user.tg_code if success else None
 
-    async def send_task_notification(self, user_id: int,
-                                     notification_type: str,
-                                     task_data: dict) -> bool:
+    async def send_task_notification(
+        self, user_id: int, notification_type: str, task_data: dict
+    ) -> bool:
         """Отправка уведомления о задаче"""
         user = self.get_user_by_id(user_id)
         if not user or not user.tg_chat_id:
             return False
 
         from core.bot.client import send_telegram_notification
+
         return await send_telegram_notification(
-            chat_id=user.tg_chat_id,
-            notification_type=notification_type,
-            data=task_data
+            chat_id=user.tg_chat_id, notification_type=notification_type, data=task_data
         )
 
-    async def send_telegram_notification(self, user_id: int,
-                                         notification_type: str,
-                                         data: dict) -> bool:
+    async def send_telegram_notification(
+        self, user_id: int, notification_type: str, data: dict
+    ) -> bool:
         """Отправка уведомления пользователю через Telegram"""
         user = self.get_user_by_id(user_id)
         if not user or not user.tg_chat_id or not user.tg_verified:
@@ -964,11 +969,10 @@ class UserService:
         try:
             # Импортируем здесь, чтобы избежать циклического импорта
             from ..bot.deps import get_bot
+
             bot = await get_bot()
             return await bot.send_notification(
-                chat_id=user.tg_chat_id,
-                notification_type=notification_type,
-                data=data
+                chat_id=user.tg_chat_id, notification_type=notification_type, data=data
             )
         except Exception as e:
             logger.error(f"Failed to send Telegram notification: {e}")
@@ -978,8 +982,8 @@ class UserService:
         """Получение пользователя по Telegram коду"""
         try:
             return self.user_model.get(
-                (self.user_model.tg_code == tg_code) &
-                (self.user_model.is_active == True)
+                (self.user_model.tg_code == tg_code)
+                & (self.user_model.is_active == True)
             )
         except self.user_model.DoesNotExist:
             return None
@@ -988,8 +992,8 @@ class UserService:
         """Получение пользователя по Telegram username"""
         try:
             return self.user_model.get(
-                (self.user_model.tg_username == tg_username) &
-                (self.user_model.is_active == True)
+                (self.user_model.tg_username == tg_username)
+                & (self.user_model.is_active == True)
             )
         except self.user_model.DoesNotExist:
             return None
