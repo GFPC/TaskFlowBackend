@@ -15,8 +15,9 @@ def list_files(folder: str, ext: tuple, recursive: bool = False) -> list:
             ret += list_files(fp, ext, True)
     return ret
 
+
 cwd = os.path.dirname(os.path.dirname(__file__)) or os.getcwd()
-file_list = list_files('core', ('py', ), True) + list_files('.', ('py', ))
+file_list = list_files('core', ('py',), True) + list_files('.', ('py',))
 
 out = open('joined.txt', 'w', encoding='utf-8')
 for fp in file_list:

@@ -1,25 +1,30 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from .team import TeamResponse
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .team import TeamResponse
 
 # ------------------- БАЗОВЫЕ СХЕМЫ -------------------
 
+
 class ProjectBase(BaseModel):
     """Базовая схема проекта"""
+
     name: str = Field(..., min_length=2, max_length=200)
     description: Optional[str] = None
 
 
 class ProjectCreate(ProjectBase):
     """Создание проекта"""
+
     team_slug: str = Field(..., min_length=1)
     initial_graph_data: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
     """Обновление проекта"""
+
     name: Optional[str] = Field(None, min_length=2, max_length=200)
     description: Optional[str] = None
     settings: Optional[Dict[str, Any]] = None
@@ -27,6 +32,7 @@ class ProjectUpdate(BaseModel):
 
 class ProjectResponse(BaseModel):
     """Ответ с информацией о проекте"""
+
     id: int
     name: str
     slug: str
@@ -59,7 +65,9 @@ class ProjectResponse(BaseModel):
                 'team_name': data.team.name if data.team else None,
                 'team_slug': data.team.slug if data.team else None,
                 'created_by_id': data.created_by_id,
-                'created_by_username': data.created_by.username if data.created_by else None,
+                'created_by_username': data.created_by.username
+                if data.created_by
+                else None,
                 'tasks_count': data.tasks_count,
                 'members_count': data.members_count,
                 'status': data.status,
@@ -72,6 +80,7 @@ class ProjectResponse(BaseModel):
 
 class ProjectDetailResponse(ProjectResponse):
     """Детальная информация о проекте"""
+
     members: List['ProjectMemberResponse']
     user_role: Optional[str] = None
     can_manage_members: bool = False
@@ -85,23 +94,28 @@ class ProjectDetailResponse(ProjectResponse):
 
 # ------------------- УЧАСТНИКИ -------------------
 
+
 class ProjectMemberBase(BaseModel):
     """Базовая схема участника проекта"""
+
     role: str = Field(..., pattern='^(owner|manager|developer|observer)$')
 
 
 class ProjectMemberAdd(ProjectMemberBase):
     """Добавление участника"""
+
     username: str = Field(..., min_length=3, max_length=50)
 
 
 class ProjectMemberUpdate(ProjectMemberBase):
     """Обновление роли участника"""
+
     pass
 
 
 class ProjectMemberResponse(BaseModel):
     """Ответ с информацией об участнике проекта"""
+
     id: int
     project_id: int
     user_id: int
@@ -137,14 +151,17 @@ class ProjectMemberResponse(BaseModel):
 
 # ------------------- ПРИГЛАШЕНИЯ -------------------
 
+
 class ProjectInvitationCreate(BaseModel):
     """Создание приглашения в проект"""
+
     username: str = Field(..., min_length=3, max_length=50)
     role: str = Field(..., pattern='^(manager|developer|observer)$')
 
 
 class ProjectInvitationResponse(BaseModel):
     """Ответ с информацией о приглашении"""
+
     id: int
     project_id: int
     project_name: str
@@ -171,11 +188,19 @@ class ProjectInvitationResponse(BaseModel):
                 'project_id': data.project_id,
                 'project_name': data.project.name if data.project else None,
                 'project_slug': data.project.slug if data.project else None,
-                'team_name': data.project.team.name if data.project and data.project.team else None,
-                'invited_by_username': data.invited_by.username if data.invited_by else None,
+                'team_name': data.project.team.name
+                if data.project and data.project.team
+                else None,
+                'invited_by_username': data.invited_by.username
+                if data.invited_by
+                else None,
                 'invited_user_id': data.invited_user.id if data.invited_user else None,
-                'invited_user_username': data.invited_user.username if data.invited_user else None,
-                'proposed_role': data.proposed_role.name if data.proposed_role else None,
+                'invited_user_username': data.invited_user.username
+                if data.invited_user
+                else None,
+                'proposed_role': data.proposed_role.name
+                if data.proposed_role
+                else None,
                 'status': data.status,
                 'created_at': data.created_at,
                 'expires_at': data.expires_at,
@@ -186,15 +211,19 @@ class ProjectInvitationResponse(BaseModel):
 
 # ------------------- ПЕРЕДАЧА ВЛАДЕНИЯ -------------------
 
+
 class ProjectTransferOwnership(BaseModel):
     """Передача прав владельца проекта"""
+
     new_owner_username: str = Field(..., min_length=3, max_length=50)
 
 
 # ------------------- ГРАФ -------------------
 
+
 class ProjectGraphData(BaseModel):
     """Данные графа для ReactFlow"""
+
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
     viewport: Optional[Dict[str, Any]] = None
@@ -202,8 +231,10 @@ class ProjectGraphData(BaseModel):
 
 # ------------------- СТАТИСТИКА -------------------
 
+
 class ProjectStatsResponse(BaseModel):
     """Статистика проекта"""
+
     project_id: int
     project_name: str
     total_members: int

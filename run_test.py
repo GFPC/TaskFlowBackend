@@ -1,6 +1,7 @@
 # run_test.py
-import sys
 import os
+import sys
+
 import pytest
 
 if __name__ == '__main__':

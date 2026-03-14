@@ -1,10 +1,11 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
 import json
-import bcrypt
-import sys
 import os
+import sys
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
+
+import bcrypt
+import pytest
 
 # Добавляем путь к проекту
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -13,11 +14,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from peewee import SqliteDatabase
 
 # Импортируем модели и сервис
-from core.db.models.user import User, UserRole, AuthSession, RecoveryCode, AuthLog
+from core.db.models.user import AuthLog, AuthSession, RecoveryCode, User, UserRole
 from core.services.UserService import UserService
 
-
 # ------------------- Фикстуры для тестов -------------------
+
 
 @pytest.fixture(scope='function')
 def test_db():
@@ -25,7 +26,11 @@ def test_db():
     test_db = SqliteDatabase(':memory:')
 
     # Привязываем модели к тестовой БД
-    test_db.bind([User, UserRole, AuthSession, RecoveryCode, AuthLog], bind_refs=False, bind_backrefs=False)
+    test_db.bind(
+        [User, UserRole, AuthSession, RecoveryCode, AuthLog],
+        bind_refs=False,
+        bind_backrefs=False,
+    )
 
     test_db.connect()
     test_db.create_tables([User, UserRole, AuthSession, RecoveryCode, AuthLog])
@@ -50,8 +55,8 @@ def default_role(test_db):
         defaults={
             'description': 'Стандартный пользователь',
             'priority': 1,
-            'permissions': json.dumps({'view_tasks': True})
-        }
+            'permissions': json.dumps({'view_tasks': True}),
+        },
     )
     return role
 
@@ -64,8 +69,8 @@ def admin_role(test_db):
         defaults={
             'description': 'Администратор',
             'priority': 100,
-            'permissions': json.dumps({'all': True})
-        }
+            'permissions': json.dumps({'all': True}),
+        },
     )
     return role
 
@@ -77,13 +82,15 @@ def test_user(test_db, default_role):
         first_name='Иван',
         last_name='Иванов',
         username='ivanov',
-        password_hash=bcrypt.hashpw('Password123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(
+            'Password123'.encode('utf-8'), bcrypt.gensalt()
+        ).decode('utf-8'),
         email='ivanov@test.com',
         tg_username='@ivanov',
         role=default_role,
         is_active=True,
         is_verified=False,
-        tg_verified=False
+        tg_verified=False,
     )
 
 
@@ -94,7 +101,9 @@ def verified_user(test_db, default_role):
         first_name='Иван',
         last_name='Иванов',
         username='ivanov_verified',
-        password_hash=bcrypt.hashpw('Password123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(
+            'Password123'.encode('utf-8'), bcrypt.gensalt()
+        ).decode('utf-8'),
         email='ivanov_verified@test.com',
         tg_username='@ivanov_verified',
         tg_id=123456789,
@@ -102,7 +111,7 @@ def verified_user(test_db, default_role):
         role=default_role,
         is_active=True,
         is_verified=True,
-        tg_verified=True
+        tg_verified=True,
     )
 
 
@@ -113,12 +122,14 @@ def unverified_user(test_db, default_role):
         first_name='Петр',
         last_name='Петров',
         username='petrov',
-        password_hash=bcrypt.hashpw('Password123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(
+            'Password123'.encode('utf-8'), bcrypt.gensalt()
+        ).decode('utf-8'),
         email='petrov@test.com',  # Добавляем email
         role=default_role,
         is_active=True,
         is_verified=False,
-        tg_verified=False
+        tg_verified=False,
     )
 
 
@@ -129,12 +140,14 @@ def admin_user(test_db, admin_role):
         first_name='Admin',
         last_name='Adminov',
         username='admin',
-        password_hash=bcrypt.hashpw('Admin123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(
+            'Admin123'.encode('utf-8'), bcrypt.gensalt()
+        ).decode('utf-8'),
         role=admin_role,
         is_active=True,
         is_superuser=True,
         is_verified=True,
-        tg_verified=True
+        tg_verified=True,
     )
 
 
@@ -142,14 +155,12 @@ def admin_user(test_db, admin_role):
 def auth_session(test_db, verified_user):
     """Создаем тестовую сессию"""
     return AuthSession.create_session(
-        user=verified_user,
-        session_type='web',
-        ip='127.0.0.1',
-        user_agent='test-agent'
+        user=verified_user, session_type='web', ip='127.0.0.1', user_agent='test-agent'
     )
 
 
 # ------------------- Тесты валидации -------------------
+
 
 class TestValidation:
     """Тесты методов валидации"""
@@ -212,6 +223,7 @@ class TestValidation:
 
 # ------------------- Тесты регистрации -------------------
 
+
 class TestRegistration:
     """Тесты регистрации пользователей"""
 
@@ -223,7 +235,7 @@ class TestRegistration:
             username='sergeev',
             password='Password123!',
             email='sergeev@test.com',
-            tg_username='@sergeev'
+            tg_username='@sergeev',
         )
 
         assert result['user'] is not None
@@ -245,7 +257,7 @@ class TestRegistration:
                 first_name='Иван',
                 last_name='Иванов',
                 username='ivanov',
-                password='Password123!'
+                password='Password123!',
             )
 
     def test_register_duplicate_email(self, user_service, test_user):
@@ -256,7 +268,7 @@ class TestRegistration:
                 last_name='Петров',
                 username='petrov',
                 password='Password123!',
-                email='ivanov@test.com'
+                email='ivanov@test.com',
             )
 
     def test_register_duplicate_tg_username(self, user_service, test_user):
@@ -267,7 +279,7 @@ class TestRegistration:
                 last_name='Петров',
                 username='petrov',
                 password='Password123!',
-                tg_username='@ivanov'
+                tg_username='@ivanov',
             )
 
     def test_register_invalid_password(self, user_service):
@@ -277,7 +289,7 @@ class TestRegistration:
                 first_name='Анна',
                 last_name='Аннова',
                 username='annova',
-                password='weak'
+                password='weak',
             )
 
     def test_register_invalid_username(self, user_service):
@@ -287,11 +299,12 @@ class TestRegistration:
                 first_name='Анна',
                 last_name='Аннова',
                 username='an',
-                password='Password123!'
+                password='Password123!',
             )
 
 
 # ------------------- Тесты аутентификации -------------------
+
 
 class TestAuthentication:
     """Тесты аутентификации"""
@@ -302,7 +315,7 @@ class TestAuthentication:
             username='ivanov_verified',
             password='Password123',
             ip='127.0.0.1',
-            user_agent='test-agent'
+            user_agent='test-agent',
         )
 
         assert result['requires_verification'] is False
@@ -317,10 +330,7 @@ class TestAuthentication:
 
     def test_login_success_unverified(self, user_service, unverified_user):
         """Вход с неподтвержденным Telegram - требует верификации"""
-        result = user_service.login(
-            username='petrov',
-            password='Password123'
-        )
+        result = user_service.login(username='petrov', password='Password123')
 
         assert result['requires_verification'] is True
         assert result['user_id'] == unverified_user.id
@@ -334,18 +344,12 @@ class TestAuthentication:
     def test_login_wrong_password(self, user_service, test_user):
         """Неверный пароль"""
         with pytest.raises(ValueError, match='Invalid username or password'):
-            user_service.login(
-                username='ivanov',
-                password='WrongPassword'
-            )
+            user_service.login(username='ivanov', password='WrongPassword')
 
     def test_login_user_not_found(self, user_service):
         """Пользователь не найден"""
         with pytest.raises(ValueError, match='Invalid username or password'):
-            user_service.login(
-                username='nonexistent',
-                password='Password123'
-            )
+            user_service.login(username='nonexistent', password='Password123')
 
     def test_login_inactive_user(self, user_service, test_user):
         """Неактивный пользователь"""
@@ -353,10 +357,7 @@ class TestAuthentication:
         test_user.save()
 
         with pytest.raises(ValueError, match='Invalid username or password'):
-            user_service.login(
-                username='ivanov',
-                password='Password123'
-            )
+            user_service.login(username='ivanov', password='Password123')
 
     def test_verify_telegram_code_success(self, user_service, unverified_user):
         """Успешная верификация Telegram кода"""
@@ -367,7 +368,7 @@ class TestAuthentication:
             user_id=unverified_user.id,
             code=tg_code,
             tg_id=123456789,
-            tg_chat_id=-123456789
+            tg_chat_id=-123456789,
         )
 
         assert result['success'] is True
@@ -386,10 +387,7 @@ class TestAuthentication:
         unverified_user.save()
 
         with pytest.raises(ValueError, match='Invalid or expired verification code'):
-            user_service.verify_telegram_code(
-                user_id=unverified_user.id,
-                code='000000'
-            )
+            user_service.verify_telegram_code(user_id=unverified_user.id, code='000000')
 
     def test_verify_telegram_code_expired(self, user_service, unverified_user):
         """Просроченный код"""
@@ -398,10 +396,7 @@ class TestAuthentication:
         unverified_user.save()
 
         with pytest.raises(ValueError, match='Invalid or expired verification code'):
-            user_service.verify_telegram_code(
-                user_id=unverified_user.id,
-                code='123456'
-            )
+            user_service.verify_telegram_code(user_id=unverified_user.id, code='123456')
 
     def test_verify_telegram_code_max_attempts(self, user_service, unverified_user):
         """Превышение лимита попыток"""
@@ -411,21 +406,16 @@ class TestAuthentication:
         unverified_user.save()
 
         with pytest.raises(ValueError, match='Invalid or expired verification code'):
-            user_service.verify_telegram_code(
-                user_id=unverified_user.id,
-                code='123456'
-            )
+            user_service.verify_telegram_code(user_id=unverified_user.id, code='123456')
 
     def test_verify_telegram_code_user_not_found(self, user_service):
         """Пользователь не найден"""
         with pytest.raises(ValueError, match='User not found'):
-            user_service.verify_telegram_code(
-                user_id=999,
-                code='123456'
-            )
+            user_service.verify_telegram_code(user_id=999, code='123456')
 
 
 # ------------------- Тесты сессий -------------------
+
 
 class TestSessions:
     """Тесты управления сессиями"""
@@ -520,7 +510,9 @@ class TestSessions:
 
         assert AuthSession.get_by_id(session.id).is_active is False
 
-    def test_revoke_session_wrong_user(self, user_service, verified_user, unverified_user):
+    def test_revoke_session_wrong_user(
+        self, user_service, verified_user, unverified_user
+    ):
         """Отзыв сессии другого пользователя"""
         session = AuthSession.create_session(verified_user)
 
@@ -530,6 +522,7 @@ class TestSessions:
 
 
 # ------------------- Тесты восстановления доступа -------------------
+
 
 class TestRecovery:
     """Тесты восстановления пароля"""
@@ -561,9 +554,7 @@ class TestRecovery:
         recovery = RecoveryCode.create_for_user(test_user)
 
         result = user_service.reset_password(
-            recovery_code=recovery.code,
-            new_password='NewPassword123!',
-            ip='127.0.0.1'
+            recovery_code=recovery.code, new_password='NewPassword123!', ip='127.0.0.1'
         )
 
         assert result['success'] is True
@@ -579,8 +570,7 @@ class TestRecovery:
         """Невалидный код восстановления"""
         with pytest.raises(ValueError, match='Invalid recovery code'):
             user_service.reset_password(
-                recovery_code='invalid-code',
-                new_password='NewPassword123!'
+                recovery_code='invalid-code', new_password='NewPassword123!'
             )
 
     def test_reset_password_expired_code(self, user_service, test_user):
@@ -592,8 +582,7 @@ class TestRecovery:
         # Должен выбросить исключение с сообщением "Recovery code expired or already used"
         with pytest.raises(ValueError, match='Recovery code expired or already used'):
             user_service.reset_password(
-                recovery_code=recovery.code,
-                new_password='NewPassword123!'
+                recovery_code=recovery.code, new_password='NewPassword123!'
             )
 
     def test_reset_password_used_code(self, user_service, test_user):
@@ -605,8 +594,7 @@ class TestRecovery:
         # Должен выбросить исключение с сообщением "Recovery code expired or already used"
         with pytest.raises(ValueError, match='Recovery code expired or already used'):
             user_service.reset_password(
-                recovery_code=recovery.code,
-                new_password='NewPassword123!'
+                recovery_code=recovery.code, new_password='NewPassword123!'
             )
 
     def test_reset_password_invalid_new_password(self, user_service, test_user):
@@ -615,12 +603,12 @@ class TestRecovery:
 
         with pytest.raises(ValueError, match='Invalid password'):
             user_service.reset_password(
-                recovery_code=recovery.code,
-                new_password='weak'
+                recovery_code=recovery.code, new_password='weak'
             )
 
 
 # ------------------- Тесты управления профилем -------------------
+
 
 class TestProfileManagement:
     """Тесты управления профилем"""
@@ -660,7 +648,7 @@ class TestProfileManagement:
             first_name='Петр',
             last_name='Петров',
             email='petrov@test.com',
-            tg_username='@petrov'
+            tg_username='@petrov',
         )
 
         assert updated_user.first_name == 'Петр'
@@ -672,8 +660,7 @@ class TestProfileManagement:
     def test_update_profile_partial(self, user_service, test_user):
         """Частичное обновление профиля"""
         updated_user = user_service.update_profile(
-            user_id=test_user.id,
-            first_name='Петр'
+            user_id=test_user.id, first_name='Петр'
         )
 
         assert updated_user.first_name == 'Петр'
@@ -682,64 +669,54 @@ class TestProfileManagement:
 
     def test_update_profile_clear_email(self, user_service, test_user):
         """Очистка email"""
-        updated_user = user_service.update_profile(
-            user_id=test_user.id,
-            email=''
-        )
+        updated_user = user_service.update_profile(user_id=test_user.id, email='')
 
         assert updated_user.email is None
 
     def test_update_profile_clear_tg_username(self, user_service, test_user):
         """Очистка Telegram username"""
-        updated_user = user_service.update_profile(
-            user_id=test_user.id,
-            tg_username=''
-        )
+        updated_user = user_service.update_profile(user_id=test_user.id, tg_username='')
 
         assert updated_user.tg_username is None
         assert updated_user.tg_verified is False
 
-    def test_update_profile_duplicate_email(self, user_service, test_user, unverified_user):
+    def test_update_profile_duplicate_email(
+        self, user_service, test_user, unverified_user
+    ):
         """Обновление с существующим email"""
         # Убедимся, что у unverified_user есть email
         assert unverified_user.email is not None
 
         with pytest.raises(ValueError, match='Email already registered'):
             user_service.update_profile(
-                user_id=test_user.id,
-                email=unverified_user.email
+                user_id=test_user.id, email=unverified_user.email
             )
 
-    def test_update_profile_duplicate_tg_username(self, user_service, test_user, verified_user):
+    def test_update_profile_duplicate_tg_username(
+        self, user_service, test_user, verified_user
+    ):
         """Обновление с существующим Telegram username"""
         with pytest.raises(ValueError, match='Telegram username already registered'):
             user_service.update_profile(
-                user_id=test_user.id,
-                tg_username='@ivanov_verified'
+                user_id=test_user.id, tg_username='@ivanov_verified'
             )
 
     def test_update_profile_invalid_email(self, user_service, test_user):
         """Невалидный email"""
         with pytest.raises(ValueError, match='Invalid email'):
-            user_service.update_profile(
-                user_id=test_user.id,
-                email='invalid-email'
-            )
+            user_service.update_profile(user_id=test_user.id, email='invalid-email')
 
     def test_update_profile_user_not_found(self, user_service):
         """Пользователь не найден"""
         with pytest.raises(ValueError, match='User not found'):
-            user_service.update_profile(
-                user_id=999,
-                first_name='Новое имя'
-            )
+            user_service.update_profile(user_id=999, first_name='Новое имя')
 
     def test_change_password_success(self, user_service, test_user):
         """Успешная смена пароля"""
         result = user_service.change_password(
             user_id=test_user.id,
             current_password='Password123',
-            new_password='NewPassword123!'
+            new_password='NewPassword123!',
         )
 
         assert result is True
@@ -753,7 +730,7 @@ class TestProfileManagement:
             user_service.change_password(
                 user_id=test_user.id,
                 current_password='WrongPassword',
-                new_password='NewPassword123!'
+                new_password='NewPassword123!',
             )
 
     def test_change_password_invalid_new(self, user_service, test_user):
@@ -762,7 +739,7 @@ class TestProfileManagement:
             user_service.change_password(
                 user_id=test_user.id,
                 current_password='Password123',
-                new_password='weak'
+                new_password='weak',
             )
 
     def test_change_password_user_not_found(self, user_service):
@@ -771,19 +748,15 @@ class TestProfileManagement:
             user_service.change_password(
                 user_id=999,
                 current_password='Password123',
-                new_password='NewPassword123!'
+                new_password='NewPassword123!',
             )
 
     def test_update_theme_preferences(self, user_service, test_user):
         """Обновление настроек темы"""
-        theme_data = {
-            'mode': 'dark',
-            'primary_color': '#ff0000'
-        }
+        theme_data = {'mode': 'dark', 'primary_color': '#ff0000'}
 
         result = user_service.update_theme_preferences(
-            user_id=test_user.id,
-            theme_data=theme_data
+            user_id=test_user.id, theme_data=theme_data
         )
 
         assert result['mode'] == 'dark'
@@ -801,20 +774,15 @@ class TestProfileManagement:
             'email': False,
             'task_assigned': True,
             'task_completed': True,
-            'dependency_ready': True
+            'dependency_ready': True,
         }
         test_user.notification_settings = json.dumps(initial_settings)
         test_user.save()
 
-        settings = {
-            'telegram': False,
-            'email': True,
-            'task_assigned': False
-        }
+        settings = {'telegram': False, 'email': True, 'task_assigned': False}
 
         result = user_service.update_notification_settings(
-            user_id=test_user.id,
-            settings=settings
+            user_id=test_user.id, settings=settings
         )
 
         assert result['telegram'] is False
@@ -826,15 +794,16 @@ class TestProfileManagement:
 
 # ------------------- Тесты административных функций -------------------
 
+
 class TestAdminFunctions:
     """Тесты административных функций"""
 
-    def test_change_user_role_by_admin(self, user_service, test_user, admin_user, admin_role):
+    def test_change_user_role_by_admin(
+        self, user_service, test_user, admin_user, admin_role
+    ):
         """Администратор меняет роль пользователя"""
         updated_user = user_service.change_user_role(
-            user_id=test_user.id,
-            role_name='Хозяин',
-            admin_user=admin_user
+            user_id=test_user.id, role_name='Хозяин', admin_user=admin_user
         )
 
         assert updated_user.role_id == admin_role.id
@@ -843,25 +812,20 @@ class TestAdminFunctions:
         """Обычный пользователь не может менять роли"""
         with pytest.raises(PermissionError, match='Insufficient permissions'):
             user_service.change_user_role(
-                user_id=test_user.id,
-                role_name='Хозяин',
-                admin_user=test_user
+                user_id=test_user.id, role_name='Хозяин', admin_user=test_user
             )
 
     def test_change_user_role_role_not_found(self, user_service, admin_user):
         """Роль не найдена"""
         with pytest.raises(ValueError, match='Role .* not found'):
             user_service.change_user_role(
-                user_id=1,
-                role_name='NonExistentRole',
-                admin_user=admin_user
+                user_id=1, role_name='NonExistentRole', admin_user=admin_user
             )
 
     def test_deactivate_user_by_admin(self, user_service, test_user, admin_user):
         """Администратор деактивирует пользователя"""
         result = user_service.deactivate_user(
-            user_id=test_user.id,
-            admin_user=admin_user
+            user_id=test_user.id, admin_user=admin_user
         )
 
         assert result is True
@@ -872,28 +836,19 @@ class TestAdminFunctions:
     def test_deactivate_user_no_permission(self, user_service, test_user):
         """Обычный пользователь не может деактивировать"""
         with pytest.raises(PermissionError, match='Insufficient permissions'):
-            user_service.deactivate_user(
-                user_id=test_user.id,
-                admin_user=test_user
-            )
+            user_service.deactivate_user(user_id=test_user.id, admin_user=test_user)
 
     def test_deactivate_user_not_found(self, user_service, admin_user):
         """Пользователь для деактивации не найден"""
         with pytest.raises(ValueError, match='User not found'):
-            user_service.deactivate_user(
-                user_id=999,
-                admin_user=admin_user
-            )
+            user_service.deactivate_user(user_id=999, admin_user=admin_user)
 
     def test_activate_user(self, user_service, test_user, admin_user):
         """Активация пользователя"""
         test_user.is_active = False
         test_user.save()
 
-        result = user_service.activate_user(
-            user_id=test_user.id,
-            admin_user=admin_user
-        )
+        result = user_service.activate_user(user_id=test_user.id, admin_user=admin_user)
 
         assert result is True
 
@@ -903,13 +858,11 @@ class TestAdminFunctions:
     def test_activate_user_not_found(self, user_service, admin_user):
         """Пользователь для активации не найден"""
         with pytest.raises(ValueError, match='User not found'):
-            user_service.activate_user(
-                user_id=999,
-                admin_user=admin_user
-            )
+            user_service.activate_user(user_id=999, admin_user=admin_user)
 
 
 # ------------------- Тесты поиска и статистики -------------------
+
 
 class TestSearchAndStats:
     """Тесты поиска и статистики"""
@@ -928,14 +881,18 @@ class TestSearchAndStats:
         assert len(results) >= 1
         assert results[0].username == 'ivanov'
 
-    def test_search_users_by_role(self, user_service, test_user, unverified_user, default_role):
+    def test_search_users_by_role(
+        self, user_service, test_user, unverified_user, default_role
+    ):
         """Поиск пользователей по роли"""
         results = user_service.search_users(role_id=default_role.id)
 
         assert len(results) >= 2
         assert all(u.role_id == default_role.id for u in results)
 
-    def test_search_users_by_active_status(self, user_service, test_user, unverified_user):
+    def test_search_users_by_active_status(
+        self, user_service, test_user, unverified_user
+    ):
         """Поиск по статусу активности"""
         test_user.is_active = False
         test_user.save()
@@ -957,7 +914,7 @@ class TestSearchAndStats:
                 username=f'testuser{i}',
                 password_hash='hash',
                 role_id=1,
-                is_active=True
+                is_active=True,
             )
 
         results = user_service.search_users(limit=2, offset=0)
@@ -967,7 +924,9 @@ class TestSearchAndStats:
         assert len(results_page2) == 2
         assert results[0].id != results_page2[0].id
 
-    def test_get_user_stats(self, user_service, verified_user, unverified_user, admin_user):
+    def test_get_user_stats(
+        self, user_service, verified_user, unverified_user, admin_user
+    ):
         """Получение статистики пользователей"""
         # Убедимся, что verified_user имеет tg_verified=True
         verified_user.tg_verified = True
@@ -1007,6 +966,7 @@ class TestSearchAndStats:
 
 # ------------------- Тесты логирования -------------------
 
+
 class TestLogging:
     """Тесты системы логирования"""
 
@@ -1015,9 +975,7 @@ class TestLogging:
         initial_count = AuthLog.select().count()
 
         user_service.login(
-            username='ivanov_verified',
-            password='Password123',
-            ip='127.0.0.1'
+            username='ivanov_verified', password='Password123', ip='127.0.0.1'
         )
 
         assert AuthLog.select().count() == initial_count + 1
@@ -1033,10 +991,7 @@ class TestLogging:
         initial_count = AuthLog.select().count()
 
         try:
-            user_service.login(
-                username='ivanov',
-                password='WrongPassword'
-            )
+            user_service.login(username='ivanov', password='WrongPassword')
         except ValueError:
             pass
 
@@ -1056,7 +1011,7 @@ class TestLogging:
             first_name='Тест',
             last_name='Тестов',
             username='testuser',
-            password='Password123!'
+            password='Password123!',
         )
 
         assert AuthLog.select().count() == initial_count + 1
@@ -1096,10 +1051,7 @@ class TestLogging:
 
         initial_count = AuthLog.select().count()
 
-        user_service.verify_telegram_code(
-            user_id=unverified_user.id,
-            code=tg_code
-        )
+        user_service.verify_telegram_code(user_id=unverified_user.id, code=tg_code)
 
         assert AuthLog.select().count() == initial_count + 1
 
@@ -1110,15 +1062,13 @@ class TestLogging:
 
 # ------------------- Тесты граничных случаев -------------------
 
+
 class TestEdgeCases:
     """Тесты граничных случаев"""
 
     def test_create_session_for_unverified_user(self, user_service, unverified_user):
         """Создание сессии для неподтвержденного пользователя"""
-        result = user_service.login(
-            username='petrov',
-            password='Password123'
-        )
+        result = user_service.login(username='petrov', password='Password123')
 
         assert result['requires_verification'] is True
         assert result['session'] is None
@@ -1126,15 +1076,11 @@ class TestEdgeCases:
     def test_multiple_sessions_same_user(self, user_service, verified_user):
         """Множественные сессии одного пользователя"""
         session1 = user_service.login(
-            username='ivanov_verified',
-            password='Password123',
-            device_id='device1'
+            username='ivanov_verified', password='Password123', device_id='device1'
         )
 
         session2 = user_service.login(
-            username='ivanov_verified',
-            password='Password123',
-            device_id='device2'
+            username='ivanov_verified', password='Password123', device_id='device2'
         )
 
         sessions = user_service.get_user_sessions(verified_user.id)
@@ -1146,14 +1092,14 @@ class TestEdgeCases:
             username='ivanov_verified',
             password='Password123',
             device_id='web',
-            user_agent='chrome'
+            user_agent='chrome',
         )
 
         mobile_session = user_service.login(
             username='ivanov_verified',
             password='Password123',
             device_id='mobile',
-            user_agent='ios'
+            user_agent='ios',
         )
 
         assert web_session['session'].id != mobile_session['session'].id
@@ -1173,10 +1119,7 @@ class TestEdgeCases:
 
     def test_verify_already_verified_user(self, user_service, verified_user):
         """Верификация уже подтвержденного пользователя"""
-        result = user_service.login(
-            username='ivanov_verified',
-            password='Password123'
-        )
+        result = user_service.login(username='ivanov_verified', password='Password123')
 
         assert result['requires_verification'] is False
         assert result['session'] is not None
@@ -1187,7 +1130,7 @@ class TestEdgeCases:
             first_name='Анна',
             last_name='Аннова',
             username='annova',
-            password='Password123!'
+            password='Password123!',
         )
 
         assert result['user'] is not None
@@ -1214,7 +1157,7 @@ class TestEdgeCases:
 
         user_service.reset_password(
             recovery_code=recovery.code,
-            new_password='Password123'  # Тот же пароль
+            new_password='Password123',  # Тот же пароль
         )
 
         user = User.get_by_id(test_user.id)
@@ -1224,12 +1167,13 @@ class TestEdgeCases:
 
 # ------------------- Тесты производительности -------------------
 
+
 class TestPerformance:
     """Тесты производительности"""
 
     def test_password_hashing(self, user_service):
         """Проверка хеширования пароля"""
-        password = "TestPassword123!"
+        password = 'TestPassword123!'
         hashed = user_service._hash_password(password)
 
         assert hashed is not None
@@ -1240,10 +1184,10 @@ class TestPerformance:
 
     def test_password_verification_fails(self, user_service):
         """Проверка неудачной верификации пароля"""
-        password = "TestPassword123!"
+        password = 'TestPassword123!'
         hashed = user_service._hash_password(password)
 
-        assert user_service._verify_password("WrongPassword", hashed) is False
+        assert user_service._verify_password('WrongPassword', hashed) is False
 
     def test_session_token_generation(self, user_service, verified_user):
         """Проверка генерации токенов сессии"""

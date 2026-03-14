@@ -1,16 +1,14 @@
 import json
-from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime
 import secrets
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from peewee import *
 from peewee import logger
 
-from ..db.models.project import (
-    Project, ProjectRole, ProjectMember, ProjectInvitation
-)
-from ..db.models.user import User
+from ..db.models.project import Project, ProjectInvitation, ProjectMember, ProjectRole
 from ..db.models.team import Team, TeamMember
+from ..db.models.user import User
 
 
 class ProjectService:
@@ -31,19 +29,26 @@ class ProjectService:
     def _validate_project_name(self, name: str) -> 'Tuple[bool, Optional[str]]':
         """Валидация названия проекта"""
         if not name:
-            return False, "Project name is required"
+            return False, 'Project name is required'
 
         if len(name) < self.PROJECT_NAME_MIN_LENGTH:
-            return False, f"Project name must be at least {self.PROJECT_NAME_MIN_LENGTH} characters"
+            return (
+                False,
+                f'Project name must be at least {self.PROJECT_NAME_MIN_LENGTH} characters',
+            )
 
         if len(name) > self.PROJECT_NAME_MAX_LENGTH:
-            return False, f"Project name must be at most {self.PROJECT_NAME_MAX_LENGTH} characters"
+            return (
+                False,
+                f'Project name must be at most {self.PROJECT_NAME_MAX_LENGTH} characters',
+            )
 
         return True, None
 
     def _generate_slug(self, name: str) -> str:
         """Генерация URL-friendly slug из названия"""
         import re
+
         slug = name.lower()
         slug = re.sub(r'[^\w\s-]', '', slug)
         slug = re.sub(r'[-\s]+', '-', slug)
@@ -53,11 +58,15 @@ class ProjectService:
         """Генерация уникального slug в рамках команды"""
         slug = base_slug
         counter = 1
-        while self.project_model.select().where(
-            (self.project_model.slug == slug) &
-            (self.project_model.team_id == team_id)
-        ).exists():
-            slug = f"{base_slug}-{counter}"
+        while (
+            self.project_model.select()
+            .where(
+                (self.project_model.slug == slug)
+                & (self.project_model.team_id == team_id)
+            )
+            .exists()
+        ):
+            slug = f'{base_slug}-{counter}'
             counter += 1
         return slug
 
@@ -68,8 +77,7 @@ class ProjectService:
         roles = {}
         for role_data in self.role_model.get_default_roles():
             role, created = self.role_model.get_or_create(
-                name=role_data['name'],
-                defaults=role_data
+                name=role_data['name'], defaults=role_data
             )
             roles[role.name] = role
         return roles
@@ -83,25 +91,30 @@ class ProjectService:
 
     # ------------------- Создание проектов -------------------
 
-    def create_project(self,
-                      team: Team,
-                      name: str,
-                      created_by: User,
-                      description: Optional[str] = None,
-                      initial_graph_data: Optional[str] = None) -> Dict[str, Any]:
+    def create_project(
+        self,
+        team: Team,
+        name: str,
+        created_by: User,
+        description: Optional[str] = None,
+        initial_graph_data: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Создание нового проекта в команде
         """
         # Проверяем права на создание проекта в команде
         from .TeamService import TeamService
+
         team_service = TeamService()
         if not team_service.can_manage_projects(created_by, team):
-            raise PermissionError("You don't have permission to create projects in this team")
+            raise PermissionError(
+                "You don't have permission to create projects in this team"
+            )
 
         # Валидация
         valid, error = self._validate_project_name(name)
         if not valid:
-            raise ValueError(f"Invalid project name: {error}")
+            raise ValueError(f'Invalid project name: {error}')
 
         # Генерация slug
         base_slug = self._generate_slug(name)
@@ -120,15 +133,14 @@ class ProjectService:
             description=description.strip() if description else None,
             team=team,
             created_by=created_by,
-            graph_data=initial_graph_data or json.dumps({
-                'nodes': [],
-                'edges': []
-            }),
-            settings=json.dumps({
-                'default_task_status': 'todo',
-                'notifications_enabled': True,
-                'allow_guest_comments': False
-            })
+            graph_data=initial_graph_data or json.dumps({'nodes': [], 'edges': []}),
+            settings=json.dumps(
+                {
+                    'default_task_status': 'todo',
+                    'notifications_enabled': True,
+                    'allow_guest_comments': False,
+                }
+            ),
         )
 
         # Добавляем создателя как владельца проекта
@@ -137,7 +149,7 @@ class ProjectService:
             user=created_by,
             role=owner_role,
             created_by=created_by,
-            is_active=True
+            is_active=True,
         )
 
         # Обновляем счетчики
@@ -145,40 +157,42 @@ class ProjectService:
         project.tasks_count = 0
         project.save()
 
-        return {
-            'project': project,
-            'member': member
-        }
+        return {'project': project, 'member': member}
 
     # ------------------- Управление участниками -------------------
 
-    def add_member(self,
-                  project: Project,
-                  user: User,
-                  role_name: str,
-                  added_by: User) -> ProjectMember:
+    def add_member(
+        self, project: Project, user: User, role_name: str, added_by: User
+    ) -> ProjectMember:
         """
         Добавление участника в проект
         """
         # Проверяем права
         if not self.can_manage_members(added_by, project):
-            raise PermissionError("You don't have permission to add members to this project")
+            raise PermissionError(
+                "You don't have permission to add members to this project"
+            )
 
         # Проверяем, что пользователь - участник команды
         from .TeamService import TeamService
+
         team_service = TeamService()
         if not team_service.is_member(user, project.team):
-            raise ValueError("User must be a team member to be added to project")
+            raise ValueError('User must be a team member to be added to project')
 
         # Проверяем, не участник ли уже
-        existing = self.member_model.select().where(
-            (self.member_model.project == project) &
-            (self.member_model.user == user) &
-            (self.member_model.is_active == True)
-        ).first()
+        existing = (
+            self.member_model.select()
+            .where(
+                (self.member_model.project == project)
+                & (self.member_model.user == user)
+                & (self.member_model.is_active == True)
+            )
+            .first()
+        )
 
         if existing:
-            raise ValueError("User is already a member of this project")
+            raise ValueError('User is already a member of this project')
 
         # Получаем роль
         role = self.get_role_by_name(role_name)
@@ -187,42 +201,41 @@ class ProjectService:
 
         # Добавляем участника
         member = self.member_model.create(
-            project=project,
-            user=user,
-            role=role,
-            created_by=added_by,
-            is_active=True
+            project=project, user=user, role=role, created_by=added_by, is_active=True
         )
 
         # Обновляем счетчик
-        project.members_count = self.member_model.select().where(
-            (self.member_model.project == project) &
-            (self.member_model.is_active == True)
-        ).count()
+        project.members_count = (
+            self.member_model.select()
+            .where(
+                (self.member_model.project == project)
+                & (self.member_model.is_active == True)
+            )
+            .count()
+        )
         project.save()
 
         return member
 
-    def remove_member(self,
-                     project: Project,
-                     user: User,
-                     removed_by: User) -> bool:
+    def remove_member(self, project: Project, user: User, removed_by: User) -> bool:
         """
         Удаление участника из проекта
         """
         # Проверяем права
         if not self.can_manage_members(removed_by, project):
-            raise PermissionError("You don't have permission to remove members from this project")
+            raise PermissionError(
+                "You don't have permission to remove members from this project"
+            )
 
         # Нельзя удалить владельца
         member = self.member_model.get(
-            (self.member_model.project == project) &
-            (self.member_model.user == user) &
-            (self.member_model.is_active == True)
+            (self.member_model.project == project)
+            & (self.member_model.user == user)
+            & (self.member_model.is_active == True)
         )
 
         if member.role.name == 'owner':
-            raise ValueError("Cannot remove project owner")
+            raise ValueError('Cannot remove project owner')
 
         # Деактивируем участника
         member.is_active = False
@@ -230,35 +243,39 @@ class ProjectService:
         member.save()
 
         # Обновляем счетчик
-        project.members_count = self.member_model.select().where(
-            (self.member_model.project == project) &
-            (self.member_model.is_active == True)
-        ).count()
+        project.members_count = (
+            self.member_model.select()
+            .where(
+                (self.member_model.project == project)
+                & (self.member_model.is_active == True)
+            )
+            .count()
+        )
         project.save()
 
         return True
 
-    def change_member_role(self,
-                          project: Project,
-                          user: User,
-                          new_role_name: str,
-                          changed_by: User) -> ProjectMember:
+    def change_member_role(
+        self, project: Project, user: User, new_role_name: str, changed_by: User
+    ) -> ProjectMember:
         """
         Изменение роли участника в проекте
         """
         # Проверяем права
         if not self.can_manage_members(changed_by, project):
-            raise PermissionError("You don't have permission to change roles in this project")
+            raise PermissionError(
+                "You don't have permission to change roles in this project"
+            )
 
         member = self.member_model.get(
-            (self.member_model.project == project) &
-            (self.member_model.user == user) &
-            (self.member_model.is_active == True)
+            (self.member_model.project == project)
+            & (self.member_model.user == user)
+            & (self.member_model.is_active == True)
         )
 
         # Нельзя изменить роль владельца (кроме передачи владения)
         if member.role.name == 'owner' and changed_by.id != member.user.id:
-            raise ValueError("Only the owner can transfer ownership")
+            raise ValueError('Only the owner can transfer ownership')
 
         new_role = self.get_role_by_name(new_role_name)
         if not new_role:
@@ -269,28 +286,27 @@ class ProjectService:
 
         return member
 
-    def transfer_ownership(self,
-                          project: Project,
-                          new_owner: User,
-                          current_owner: User) -> Dict[str, Any]:
+    def transfer_ownership(
+        self, project: Project, new_owner: User, current_owner: User
+    ) -> Dict[str, Any]:
         """
         Передача прав владельца проекта
         """
         # Проверяем, что текущий пользователь - владелец
         current_member = self.member_model.get(
-            (self.member_model.project == project) &
-            (self.member_model.user == current_owner) &
-            (self.member_model.is_active == True)
+            (self.member_model.project == project)
+            & (self.member_model.user == current_owner)
+            & (self.member_model.is_active == True)
         )
 
         if current_member.role.name != 'owner':
-            raise PermissionError("Only the owner can transfer ownership")
+            raise PermissionError('Only the owner can transfer ownership')
 
         # Проверяем, что новый владелец - участник проекта
         new_member = self.member_model.get(
-            (self.member_model.project == project) &
-            (self.member_model.user == new_owner) &
-            (self.member_model.is_active == True)
+            (self.member_model.project == project)
+            & (self.member_model.user == new_owner)
+            & (self.member_model.is_active == True)
         )
 
         # Меняем роли
@@ -303,28 +319,29 @@ class ProjectService:
         current_member.role = manager_role
         current_member.save()
 
-        return {
-            'new_owner': new_member,
-            'old_owner': current_member
-        }
+        return {'new_owner': new_member, 'old_owner': current_member}
 
     # ------------------- Приглашения в проект -------------------
 
-    def create_invitation(self,
-                         project: Project,
-                         invited_by: User,
-                         proposed_role_name: str,
-                         team_member: TeamMember) -> ProjectInvitation:
+    def create_invitation(
+        self,
+        project: Project,
+        invited_by: User,
+        proposed_role_name: str,
+        team_member: TeamMember,
+    ) -> ProjectInvitation:
         """
         Создание приглашения в проект (приглашаем участника команды)
         """
         # Проверяем права
         if not self.can_manage_members(invited_by, project):
-            raise PermissionError("You don't have permission to invite members to this project")
+            raise PermissionError(
+                "You don't have permission to invite members to this project"
+            )
 
         # Проверяем, что приглашаемый - участник команды
         if team_member.team.id != project.team.id:
-            raise ValueError("User must be a member of the team that owns this project")
+            raise ValueError('User must be a member of the team that owns this project')
 
         # Получаем роль
         role = self.get_role_by_name(proposed_role_name)
@@ -332,24 +349,32 @@ class ProjectService:
             raise ValueError(f"Role '{proposed_role_name}' not found")
 
         # Проверяем, не участник ли уже проекта
-        existing = self.member_model.select().where(
-            (self.member_model.project == project) &
-            (self.member_model.user == team_member.user) &
-            (self.member_model.is_active == True)
-        ).first()
+        existing = (
+            self.member_model.select()
+            .where(
+                (self.member_model.project == project)
+                & (self.member_model.user == team_member.user)
+                & (self.member_model.is_active == True)
+            )
+            .first()
+        )
 
         if existing:
-            raise ValueError("User is already a member of this project")
+            raise ValueError('User is already a member of this project')
 
         # Проверяем, нет ли активного приглашения
-        existing_invite = self.invitation_model.select().where(
-            (self.invitation_model.project == project) &
-            (self.invitation_model.team_member == team_member) &
-            (self.invitation_model.status == 'pending')
-        ).first()
+        existing_invite = (
+            self.invitation_model.select()
+            .where(
+                (self.invitation_model.project == project)
+                & (self.invitation_model.team_member == team_member)
+                & (self.invitation_model.status == 'pending')
+            )
+            .first()
+        )
 
         if existing_invite:
-            raise ValueError("Active invitation already exists for this user")
+            raise ValueError('Active invitation already exists for this user')
 
         # Создаем приглашение
         invitation = self.invitation_model.create_invitation(
@@ -357,27 +382,29 @@ class ProjectService:
             invited_by=invited_by,
             proposed_role=role,
             team_member=team_member,
-            invited_user=team_member.user
+            invited_user=team_member.user,
         )
 
         return invitation
 
-    def accept_invitation(self, invitation: ProjectInvitation, user: User) -> Dict[str, Any]:
+    def accept_invitation(
+        self, invitation: ProjectInvitation, user: User
+    ) -> Dict[str, Any]:
         """
         Принятие приглашения в проект
         """
         # Проверяем валидность
         if invitation.status != 'pending':
-            raise ValueError("Invitation is already processed")
+            raise ValueError('Invitation is already processed')
 
         if invitation.expires_at < datetime.now():
             invitation.status = 'expired'
             invitation.save()
-            raise ValueError("Invitation has expired")
+            raise ValueError('Invitation has expired')
 
         # Проверяем, что приглашение адресовано этому пользователю
         if invitation.invited_user.id != user.id:
-            raise PermissionError("This invitation was sent to another user")
+            raise PermissionError('This invitation was sent to another user')
 
         # Принимаем приглашение
         invitation.accept()
@@ -385,10 +412,10 @@ class ProjectService:
         return {
             'project': invitation.project,
             'member': ProjectMember.get(
-                (ProjectMember.project == invitation.project) &
-                (ProjectMember.user == user) &
-                (ProjectMember.is_active == True)
-            )
+                (ProjectMember.project == invitation.project)
+                & (ProjectMember.user == user)
+                & (ProjectMember.is_active == True)
+            ),
         }
 
     def decline_invitation(self, invitation: ProjectInvitation, user: User) -> bool:
@@ -396,7 +423,7 @@ class ProjectService:
         Отклонение приглашения
         """
         if invitation.invited_user.id != user.id:
-            raise PermissionError("You cannot decline this invitation")
+            raise PermissionError('You cannot decline this invitation')
 
         invitation.status = 'declined'
         invitation.responded_at = datetime.now()
@@ -406,13 +433,14 @@ class ProjectService:
 
     # ------------------- Получение данных -------------------
 
-    def get_user_projects(self, user: User, include_archived: bool = False) -> List[Project]:
+    def get_user_projects(
+        self, user: User, include_archived: bool = False
+    ) -> List[Project]:
         """
         Получение всех проектов пользователя
         """
         query = self.member_model.select().where(
-            (self.member_model.user == user) &
-            (self.member_model.is_active == True)
+            (self.member_model.user == user) & (self.member_model.is_active == True)
         )
 
         projects = []
@@ -422,33 +450,34 @@ class ProjectService:
 
         return projects
 
-    def get_project_members(self,
-                          project: Project,
-                          include_inactive: bool = False) -> List[ProjectMember]:
+    def get_project_members(
+        self, project: Project, include_inactive: bool = False
+    ) -> List[ProjectMember]:
         """
         Получение участников проекта
         """
-        query = self.member_model.select().where(
-            self.member_model.project == project
-        )
+        query = self.member_model.select().where(self.member_model.project == project)
 
         if not include_inactive:
             query = query.where(self.member_model.is_active == True)
 
-        return list(query.order_by(
-            self.member_model.role_id.desc(),
-            self.member_model.joined_at
-        ))
+        return list(
+            query.order_by(
+                self.member_model.role_id.desc(), self.member_model.joined_at
+            )
+        )
 
-    def get_user_role_in_project(self, user: User, project: Project) -> Optional[ProjectRole]:
+    def get_user_role_in_project(
+        self, user: User, project: Project
+    ) -> Optional[ProjectRole]:
         """
         Получение роли пользователя в проекте
         """
         try:
             member = self.member_model.get(
-                (self.member_model.project == project) &
-                (self.member_model.user == user) &
-                (self.member_model.is_active == True)
+                (self.member_model.project == project)
+                & (self.member_model.user == user)
+                & (self.member_model.is_active == True)
             )
             return member.role
         except self.member_model.DoesNotExist:
@@ -460,8 +489,7 @@ class ProjectService:
         """
         try:
             return self.project_model.get(
-                (self.project_model.slug == slug) &
-                (self.project_model.team == team)
+                (self.project_model.slug == slug) & (self.project_model.team == team)
                 # НЕ ФИЛЬТРУЕМ ПО status!
             )
         except self.project_model.DoesNotExist:
@@ -475,9 +503,9 @@ class ProjectService:
         """
         try:
             self.member_model.get(
-                (self.member_model.project == project) &
-                (self.member_model.user == user) &
-                (self.member_model.is_active == True)
+                (self.member_model.project == project)
+                & (self.member_model.user == user)
+                & (self.member_model.is_active == True)
             )
             return True
         except self.member_model.DoesNotExist:
@@ -516,10 +544,12 @@ class ProjectService:
         """
         role = self.get_user_role_in_project(user, project)
         if not role:
-            logger.warning(f"User {user.username} has no role in project {project.id}")
+            logger.warning(f'User {user.username} has no role in project {project.id}')
             return False
 
-        logger.info(f"User {user.username} role: {role.name}, can_create_tasks: {role.can_create_tasks}")
+        logger.info(
+            f'User {user.username} role: {role.name}, can_create_tasks: {role.can_create_tasks}'
+        )
 
         # Если роль не имеет права - возвращаем False, НЕ ВЫБРАСЫВАЕМ ИСКЛЮЧЕНИЕ!
         if not role.can_create_tasks:
@@ -595,12 +625,14 @@ class ProjectService:
 
     # ------------------- Управление проектом -------------------
 
-    def update_project(self,
-                      project: Project,
-                      updated_by: User,
-                      name: Optional[str] = None,
-                      description: Optional[str] = None,
-                      settings: Optional[Dict[str, Any]] = None) -> Project:
+    def update_project(
+        self,
+        project: Project,
+        updated_by: User,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        settings: Optional[Dict[str, Any]] = None,
+    ) -> Project:
         """
         Обновление информации о проекте
         """
@@ -610,11 +642,10 @@ class ProjectService:
         if name is not None:
             valid, error = self._validate_project_name(name)
             if not valid:
-                raise ValueError(f"Invalid project name: {error}")
+                raise ValueError(f'Invalid project name: {error}')
             project.name = name.strip()
             project.slug = self._get_unique_slug(
-                self._generate_slug(name),
-                project.team.id
+                self._generate_slug(name), project.team.id
             )
 
         if description is not None:
@@ -628,10 +659,9 @@ class ProjectService:
         project.save()
         return project
 
-    def save_graph_data(self,
-                       project: Project,
-                       graph_data: Dict[str, Any],
-                       saved_by: User) -> Project:
+    def save_graph_data(
+        self, project: Project, graph_data: Dict[str, Any], saved_by: User
+    ) -> Project:
         """
         Сохранение данных графа
         """
@@ -674,12 +704,9 @@ class ProjectService:
         project.save()
 
         # Деактивируем всех участников
-        self.member_model.update(
-            is_active=False,
-            left_at=datetime.now()
-        ).where(
-            (self.member_model.project == project) &
-            (self.member_model.is_active == True)
+        self.member_model.update(is_active=False, left_at=datetime.now()).where(
+            (self.member_model.project == project)
+            & (self.member_model.is_active == True)
         ).execute()
 
         return True
@@ -691,21 +718,30 @@ class ProjectService:
         Статистика по проекту
         """
         from .TaskService import TaskService
+
         task_service = TaskService()
 
-        total_members = self.member_model.select().where(
-            (self.member_model.project == project) &
-            (self.member_model.is_active == True)
-        ).count()
+        total_members = (
+            self.member_model.select()
+            .where(
+                (self.member_model.project == project)
+                & (self.member_model.is_active == True)
+            )
+            .count()
+        )
 
         # Статистика по ролям
         role_stats = {}
         for role in self.role_model.select():
-            count = self.member_model.select().where(
-                (self.member_model.project == project) &
-                (self.member_model.role == role) &
-                (self.member_model.is_active == True)
-            ).count()
+            count = (
+                self.member_model.select()
+                .where(
+                    (self.member_model.project == project)
+                    & (self.member_model.role == role)
+                    & (self.member_model.is_active == True)
+                )
+                .count()
+            )
             if count > 0:
                 role_stats[role.name] = count
 
@@ -720,5 +756,5 @@ class ProjectService:
             'tasks': task_stats,
             'created_at': project.created_at,
             'created_by': project.created_by.username,
-            'team': project.team.name
+            'team': project.team.name,
         }

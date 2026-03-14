@@ -1,36 +1,43 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
 import json
-import sys
 import os
+import sys
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from peewee import SqliteDatabase
+
+from core.db.models.team import Team, TeamInvitation, TeamMember, TeamMemberRole
 from core.db.models.user import User, UserRole
-from core.db.models.team import (
-    Team, TeamMember, TeamMemberRole, TeamInvitation
-)
 from core.services.TeamService import TeamService
 
-
 # ------------------- FIXTURES -------------------
+
 
 @pytest.fixture(scope='function')
 def test_db():
     """Тестовая БД в памяти"""
     test_db = SqliteDatabase(':memory:')
 
-    test_db.bind([User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation],
-                 bind_refs=False, bind_backrefs=False)
+    test_db.bind(
+        [User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation],
+        bind_refs=False,
+        bind_backrefs=False,
+    )
 
     test_db.connect()
-    test_db.create_tables([User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation])
+    test_db.create_tables(
+        [User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation]
+    )
 
     yield test_db
 
-    test_db.drop_tables([User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation])
+    test_db.drop_tables(
+        [User, UserRole, Team, TeamMember, TeamMemberRole, TeamInvitation]
+    )
     test_db.close()
 
 
@@ -46,8 +53,7 @@ def team_service(test_db):
 def user_role(test_db):
     """Роль пользователя в системе"""
     role, _ = UserRole.get_or_create(
-        name='Работник',
-        defaults={'description': 'Test', 'priority': 1}
+        name='Работник', defaults={'description': 'Test', 'priority': 1}
     )
     return role
 
@@ -62,7 +68,7 @@ def test_user(test_db, user_role):
         password_hash='hash',
         email='ivanov@test.com',
         role=user_role,
-        is_active=True
+        is_active=True,
     )
 
 
@@ -76,7 +82,7 @@ def second_user(test_db, user_role):
         password_hash='hash',
         email='petrov@test.com',
         role=user_role,
-        is_active=True
+        is_active=True,
     )
 
 
@@ -84,9 +90,7 @@ def second_user(test_db, user_role):
 def test_team(test_db, team_service, test_user):
     """Тестовая команда"""
     result = team_service.create_team(
-        name='Test Team',
-        owner=test_user,
-        description='Test Description'
+        name='Test Team', owner=test_user, description='Test Description'
     )
     return result['team']
 
@@ -110,6 +114,7 @@ def member_role(test_db, team_service):
 
 
 # ------------------- ТЕСТЫ ВАЛИДАЦИИ -------------------
+
 
 class TestTeamValidation:
     """Тесты валидации команд"""
@@ -147,14 +152,13 @@ class TestTeamValidation:
 
 # ------------------- ТЕСТЫ СОЗДАНИЯ КОМАНД -------------------
 
+
 class TestTeamCreation:
     """Тесты создания команд"""
 
     def test_create_team_success(self, team_service, test_user):
         result = team_service.create_team(
-            name='New Team',
-            owner=test_user,
-            description='Description'
+            name='New Team', owner=test_user, description='Description'
         )
 
         assert result['team'] is not None
@@ -172,10 +176,7 @@ class TestTeamCreation:
         assert member.role.name == 'owner'
 
     def test_create_team_without_description(self, team_service, test_user):
-        result = team_service.create_team(
-            name='New Team',
-            owner=test_user
-        )
+        result = team_service.create_team(name='New Team', owner=test_user)
 
         assert result['team'].description is None
 
@@ -187,23 +188,18 @@ class TestTeamCreation:
 
     def test_create_team_invalid_name(self, team_service, test_user):
         with pytest.raises(ValueError, match='Invalid team name'):
-            team_service.create_team(
-                name='A',
-                owner=test_user
-            )
+            team_service.create_team(name='A', owner=test_user)
 
 
 # ------------------- ТЕСТЫ УПРАВЛЕНИЯ УЧАСТНИКАМИ -------------------
+
 
 class TestTeamMembers:
     """Тесты управления участниками команд"""
 
     def test_add_member_success(self, team_service, test_team, second_user, test_user):
         member = team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         assert member.user.id == second_user.id
@@ -217,49 +213,46 @@ class TestTeamMembers:
     def test_add_member_already_member(self, team_service, test_team, test_user):
         with pytest.raises(ValueError, match='already a member'):
             team_service.add_member(
-                team=test_team,
-                user=test_user,
-                role_name='member',
-                created_by=test_user
+                team=test_team, user=test_user, role_name='member', created_by=test_user
             )
 
     def test_add_member_no_permission(self, team_service, test_team, second_user):
-        with pytest.raises(PermissionError, match="You don't have permission to add members"):
+        with pytest.raises(
+            PermissionError, match="You don't have permission to add members"
+        ):
             team_service.add_member(
                 team=test_team,
                 user=second_user,
                 role_name='member',
-                created_by=second_user
+                created_by=second_user,
             )
 
-    def test_add_member_invalid_role(self, team_service, test_team, second_user, test_user):
+    def test_add_member_invalid_role(
+        self, team_service, test_team, second_user, test_user
+    ):
         with pytest.raises(ValueError, match='not found'):
             team_service.add_member(
                 team=test_team,
                 user=second_user,
                 role_name='invalid_role',
-                created_by=test_user
+                created_by=test_user,
             )
 
-    def test_remove_member_success(self, team_service, test_team, second_user, test_user):
+    def test_remove_member_success(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         result = team_service.remove_member(
-            team=test_team,
-            user=second_user,
-            removed_by=test_user
+            team=test_team, user=second_user, removed_by=test_user
         )
 
         assert result is True
 
         member = TeamMember.get(
-            (TeamMember.team == test_team) &
-            (TeamMember.user == second_user)
+            (TeamMember.team == test_team) & (TeamMember.user == second_user)
         )
         assert member.is_active is False
         assert member.left_at is not None
@@ -267,74 +260,70 @@ class TestTeamMembers:
         test_team = Team.get_by_id(test_team.id)
         assert test_team.members_count == 1
 
-    def test_remove_member_cannot_remove_owner(self, team_service, test_team, test_user):
+    def test_remove_member_cannot_remove_owner(
+        self, team_service, test_team, test_user
+    ):
         with pytest.raises(ValueError, match='Cannot remove team owner'):
             team_service.remove_member(
-                team=test_team,
-                user=test_user,
-                removed_by=test_user
+                team=test_team, user=test_user, removed_by=test_user
             )
 
-    def test_remove_member_no_permission(self, team_service, test_team, second_user, test_user):
+    def test_remove_member_no_permission(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
-        with pytest.raises(PermissionError, match="You don't have permission to remove members"):
+        with pytest.raises(
+            PermissionError, match="You don't have permission to remove members"
+        ):
             team_service.remove_member(
-                team=test_team,
-                user=second_user,
-                removed_by=second_user
+                team=test_team, user=second_user, removed_by=second_user
             )
 
-    def test_change_member_role_success(self, team_service, test_team, second_user, test_user):
+    def test_change_member_role_success(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         member = team_service.change_member_role(
             team=test_team,
             user=second_user,
             new_role_name='admin',
-            changed_by=test_user
+            changed_by=test_user,
         )
 
         assert member.role.name == 'admin'
 
-    def test_change_member_role_no_permission(self, team_service, test_team, second_user, test_user):
+    def test_change_member_role_no_permission(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
-        with pytest.raises(PermissionError, match="You don't have permission to change roles"):
+        with pytest.raises(
+            PermissionError, match="You don't have permission to change roles"
+        ):
             team_service.change_member_role(
                 team=test_team,
                 user=second_user,
                 new_role_name='admin',
-                changed_by=second_user
+                changed_by=second_user,
             )
 
-    def test_transfer_ownership_success(self, team_service, test_team, second_user, test_user):
+    def test_transfer_ownership_success(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         result = team_service.transfer_ownership(
-            team=test_team,
-            new_owner=second_user,
-            current_owner=test_user
+            team=test_team, new_owner=second_user, current_owner=test_user
         )
 
         assert result['new_owner'].user.id == second_user.id
@@ -344,23 +333,21 @@ class TestTeamMembers:
         test_team = Team.get_by_id(test_team.id)
         assert test_team.owner.id == second_user.id
 
-    def test_transfer_ownership_not_owner(self, team_service, test_team, second_user, test_user):
+    def test_transfer_ownership_not_owner(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         with pytest.raises(PermissionError, match='Only the owner'):
             team_service.transfer_ownership(
-                team=test_team,
-                new_owner=test_user,
-                current_owner=second_user
+                team=test_team, new_owner=test_user, current_owner=second_user
             )
 
 
 # ------------------- ТЕСТЫ КОДОВ ПРИГЛАШЕНИЙ -------------------
+
 
 class TestInviteCodes:
     """Тесты кодов приглашений"""
@@ -416,6 +403,7 @@ class TestInviteCodes:
 
 # ------------------- ТЕСТЫ ПРИГЛАШЕНИЙ -------------------
 
+
 class TestInvitations:
     """Тесты приглашений в команду"""
 
@@ -424,7 +412,7 @@ class TestInvitations:
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invitee_username='petrov'
+            invitee_username='petrov',
         )
 
         assert invitation.team.id == test_team.id
@@ -434,12 +422,14 @@ class TestInvitations:
         assert invitation.status == 'pending'
         assert invitation.expires_at > datetime.now()
 
-    def test_create_invitation_by_user(self, team_service, test_team, test_user, second_user):
+    def test_create_invitation_by_user(
+        self, team_service, test_team, test_user, second_user
+    ):
         invitation = team_service.create_invitation(
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         assert invitation.invited_user.id == second_user.id
@@ -447,17 +437,17 @@ class TestInvitations:
     def test_create_invitation_no_identifier(self, team_service, test_team, test_user):
         with pytest.raises(ValueError, match='Must specify'):
             team_service.create_invitation(
-                team=test_team,
-                invited_by=test_user,
-                proposed_role_name='member'
+                team=test_team, invited_by=test_user, proposed_role_name='member'
             )
 
-    def test_create_invitation_duplicate(self, team_service, test_team, test_user, second_user):
+    def test_create_invitation_duplicate(
+        self, team_service, test_team, test_user, second_user
+    ):
         team_service.create_invitation(
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         with pytest.raises(ValueError, match='already exists'):
@@ -465,7 +455,7 @@ class TestInvitations:
                 team=test_team,
                 invited_by=test_user,
                 proposed_role_name='admin',
-                invited_user=second_user
+                invited_user=second_user,
             )
 
     def test_accept_invitation(self, team_service, test_team, test_user, second_user):
@@ -473,7 +463,7 @@ class TestInvitations:
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         result = team_service.accept_invitation(invitation, second_user)
@@ -486,12 +476,14 @@ class TestInvitations:
         assert invitation.status == 'accepted'
         assert invitation.responded_at is not None
 
-    def test_accept_invitation_wrong_user(self, team_service, test_team, test_user, second_user):
+    def test_accept_invitation_wrong_user(
+        self, team_service, test_team, test_user, second_user
+    ):
         invitation = team_service.create_invitation(
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         with pytest.raises(PermissionError, match='another user'):
@@ -502,7 +494,7 @@ class TestInvitations:
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         result = team_service.decline_invitation(invitation, second_user)
@@ -516,7 +508,7 @@ class TestInvitations:
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         result = team_service.cancel_invitation(invitation, test_user)
@@ -528,15 +520,13 @@ class TestInvitations:
 
 # ------------------- ТЕСТЫ ПОЛУЧЕНИЯ ДАННЫХ -------------------
 
+
 class TestTeamQueries:
     """Тесты запросов данных команд"""
 
     def test_get_user_teams(self, team_service, test_team, test_user, second_user):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         teams = team_service.get_user_teams(second_user)
@@ -545,10 +535,7 @@ class TestTeamQueries:
 
     def test_get_team_members(self, team_service, test_team, test_user, second_user):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         members = team_service.get_team_members(test_team)
@@ -566,24 +553,28 @@ class TestTeamQueries:
         team = team_service.get_team_by_slug(test_team.slug)
         assert team.id == test_team.id
 
-    def test_get_team_invitations(self, team_service, test_team, test_user, second_user):
+    def test_get_team_invitations(
+        self, team_service, test_team, test_user, second_user
+    ):
         team_service.create_invitation(
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         invitations = team_service.get_team_invitations(test_team)
         assert len(invitations) == 1
         assert invitations[0].status == 'pending'
 
-    def test_get_user_invitations(self, team_service, test_team, test_user, second_user):
+    def test_get_user_invitations(
+        self, team_service, test_team, test_user, second_user
+    ):
         team_service.create_invitation(
             team=test_team,
             invited_by=test_user,
             proposed_role_name='member',
-            invited_user=second_user
+            invited_user=second_user,
         )
 
         invitations = team_service.get_user_invitations(second_user)
@@ -591,6 +582,7 @@ class TestTeamQueries:
 
 
 # ------------------- ТЕСТЫ ПРАВ ДОСТУПА -------------------
+
 
 class TestTeamPermissions:
     """Тесты проверки прав"""
@@ -604,7 +596,7 @@ class TestTeamPermissions:
             username='nonmember',
             password_hash='hash',
             role_id=1,
-            is_active=True
+            is_active=True,
         )
         assert team_service.is_member(non_member, test_team) is False
 
@@ -612,10 +604,7 @@ class TestTeamPermissions:
         assert team_service.can_manage_team(test_user, test_team) is True
 
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='admin',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='admin', created_by=test_user
         )
         assert team_service.can_manage_team(second_user, test_team) is False
 
@@ -623,10 +612,7 @@ class TestTeamPermissions:
         assert team_service.can_manage_projects(test_user, test_team) is True
 
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='admin',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='admin', created_by=test_user
         )
         assert team_service.can_manage_projects(second_user, test_team) is True
 
@@ -634,10 +620,7 @@ class TestTeamPermissions:
         assert team_service.can_invite_members(test_user, test_team) is True
 
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='admin',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='admin', created_by=test_user
         )
         assert team_service.can_invite_members(second_user, test_team) is True
 
@@ -646,18 +629,16 @@ class TestTeamPermissions:
             last_name='User',
             username='third',
             password_hash='hash',
-            role_id=1
+            role_id=1,
         )
         team_service.add_member(
-            team=test_team,
-            user=third_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=third_user, role_name='member', created_by=test_user
         )
         assert team_service.can_invite_members(third_user, test_team) is False
 
 
 # ------------------- ТЕСТЫ ПОИСКА И СТАТИСТИКИ -------------------
+
 
 class TestTeamSearchAndStats:
     """Тесты поиска и статистики"""
@@ -667,15 +648,14 @@ class TestTeamSearchAndStats:
         assert len(results) >= 1
         assert results[0].id == test_team.id
 
-    def test_search_teams_by_user(self, team_service, test_team, test_user, second_user):
+    def test_search_teams_by_user(
+        self, team_service, test_team, test_user, second_user
+    ):
         results = team_service.search_teams(user=second_user)
         assert len(results) == 0
 
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         results = team_service.search_teams(user=second_user)
@@ -683,10 +663,7 @@ class TestTeamSearchAndStats:
 
     def test_get_team_stats(self, team_service, test_team, test_user, second_user):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         stats = team_service.get_team_stats(test_team)
@@ -701,6 +678,7 @@ class TestTeamSearchAndStats:
 
 # ------------------- ТЕСТЫ ОБНОВЛЕНИЯ КОМАНД -------------------
 
+
 class TestTeamUpdate:
     """Тесты обновления команд"""
 
@@ -709,7 +687,7 @@ class TestTeamUpdate:
             team=test_team,
             updated_by=test_user,
             name='Updated Name',
-            description='Updated Description'
+            description='Updated Description',
         )
 
         assert updated.name == 'Updated Name'
@@ -717,48 +695,42 @@ class TestTeamUpdate:
         assert updated.slug == 'updated-name'
 
     def test_update_team_no_permission(self, team_service, test_team, second_user):
-        with pytest.raises(PermissionError, match="You don't have permission to update this team"):
+        with pytest.raises(
+            PermissionError, match="You don't have permission to update this team"
+        ):
             team_service.update_team(
-                team=test_team,
-                updated_by=second_user,
-                name='New Name'
+                team=test_team, updated_by=second_user, name='New Name'
             )
 
     def test_update_team_invalid_name(self, team_service, test_team, test_user):
         with pytest.raises(ValueError, match='Invalid team name'):
-            team_service.update_team(
-                team=test_team,
-                updated_by=test_user,
-                name='A'
-            )
+            team_service.update_team(team=test_team, updated_by=test_user, name='A')
 
 
 # ------------------- ТЕСТЫ УДАЛЕНИЯ -------------------
 
+
 class TestTeamDeletion:
     """Тесты удаления команд"""
 
-    def test_delete_team_by_owner(self, team_service, test_team, test_user, second_user):
+    def test_delete_team_by_owner(
+        self, team_service, test_team, test_user, second_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         result = team_service.delete_team(test_team, test_user)
         assert result is True
 
         member = TeamMember.get(
-            (TeamMember.team == test_team) &
-            (TeamMember.user == second_user)
+            (TeamMember.team == test_team) & (TeamMember.user == second_user)
         )
         assert member.is_active is False
         assert member.left_at is not None
 
         owner_member = TeamMember.get(
-            (TeamMember.team == test_team) &
-            (TeamMember.user == test_user)
+            (TeamMember.team == test_team) & (TeamMember.user == test_user)
         )
         assert owner_member.is_active is True
 
@@ -772,14 +744,12 @@ class TestTeamDeletion:
 
 # ------------------- ТЕСТЫ ГРАНИЧНЫХ СЛУЧАЕВ -------------------
 
+
 class TestTeamEdgeCases:
     """Тесты граничных случаев"""
 
     def test_team_without_members_except_owner(self, team_service, test_user):
-        team = team_service.create_team(
-            name='New Team',
-            owner=test_user
-        )['team']
+        team = team_service.create_team(name='New Team', owner=test_user)['team']
 
         assert team.members_count == 1
 
@@ -787,25 +757,19 @@ class TestTeamEdgeCases:
         assert len(members) == 1
         assert members[0].role.name == 'owner'
 
-    def test_reactivate_removed_member(self, team_service, test_team, second_user, test_user):
+    def test_reactivate_removed_member(
+        self, team_service, test_team, second_user, test_user
+    ):
         team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='member',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='member', created_by=test_user
         )
 
         team_service.remove_member(
-            team=test_team,
-            user=second_user,
-            removed_by=test_user
+            team=test_team, user=second_user, removed_by=test_user
         )
 
         member = team_service.add_member(
-            team=test_team,
-            user=second_user,
-            role_name='admin',
-            created_by=test_user
+            team=test_team, user=second_user, role_name='admin', created_by=test_user
         )
 
         assert member.is_active is True

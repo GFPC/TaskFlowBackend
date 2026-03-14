@@ -1,23 +1,27 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ------------------- БАЗОВЫЕ СХЕМЫ -------------------
 
+
 class TeamBase(BaseModel):
     """Базовая схема команды"""
+
     name: str = Field(..., min_length=2, max_length=100)
     description: Optional[str] = None
 
 
 class TeamCreate(TeamBase):
     """Создание команды"""
+
     pass
 
 
 class TeamUpdate(BaseModel):
     """Обновление команды"""
+
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     description: Optional[str] = None
     avatar: Optional[str] = None
@@ -25,6 +29,7 @@ class TeamUpdate(BaseModel):
 
 class TeamResponse(BaseModel):
     """Ответ с информацией о команде"""
+
     id: int
     name: str
     slug: str
@@ -41,6 +46,7 @@ class TeamResponse(BaseModel):
 
 class TeamDetailResponse(TeamResponse):
     """Детальная информация о команде"""
+
     members: List['TeamMemberResponse']
     user_role: Optional[str] = None
     can_manage: bool = False
@@ -53,23 +59,28 @@ class TeamDetailResponse(TeamResponse):
 
 # ------------------- УЧАСТНИКИ -------------------
 
+
 class TeamMemberBase(BaseModel):
     """Базовая схема участника команды"""
+
     role: str = Field(..., pattern='^(owner|admin|member)$')
 
 
 class TeamMemberAdd(TeamMemberBase):
     """Добавление участника"""
+
     username: str = Field(..., min_length=3, max_length=50)
 
 
 class TeamMemberUpdate(TeamMemberBase):
     """Обновление роли участника"""
+
     pass
 
 
 class TeamMemberResponse(BaseModel):
     """Ответ с информацией об участнике команды"""
+
     id: int
     team_id: int
     user_id: int
@@ -114,21 +125,26 @@ class TeamMemberResponse(BaseModel):
 
 # ------------------- КОДЫ ПРИГЛАШЕНИЙ -------------------
 
+
 class InviteCodeResponse(BaseModel):
     """Ответ с кодом приглашения"""
+
     invite_code: str
     expires_at: datetime
 
 
 class TeamJoinByCode(BaseModel):
     """Вступление по коду"""
+
     invite_code: str = Field(..., min_length=1)
 
 
 # ------------------- ПРИГЛАШЕНИЯ -------------------
 
+
 class TeamInvitationCreate(BaseModel):
     """Создание приглашения"""
+
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = None
     role: str = Field(..., pattern='^(admin|member)$')
@@ -137,6 +153,7 @@ class TeamInvitationCreate(BaseModel):
 
 class TeamInvitationResponse(BaseModel):
     """Ответ с информацией о приглашении"""
+
     id: int
     team_id: int
     team_name: str
@@ -156,20 +173,25 @@ class TeamInvitationResponse(BaseModel):
 
 class TeamInvitationAccept(BaseModel):
     """Принятие приглашения"""
+
     invitation_id: int
 
 
 # ------------------- ПЕРЕДАЧА ВЛАДЕНИЯ -------------------
 
+
 class TeamTransferOwnership(BaseModel):
     """Передача прав владельца"""
+
     new_owner_username: str = Field(..., min_length=3, max_length=50)
 
 
 # ------------------- СТАТИСТИКА -------------------
 
+
 class TeamStatsResponse(BaseModel):
     """Статистика команды"""
+
     team_id: int
     team_name: str
     total_members: int

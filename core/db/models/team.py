@@ -1,14 +1,17 @@
-from peewee import *
-from datetime import datetime, timedelta
 import secrets
+from datetime import datetime, timedelta
+
+from peewee import *
+
 from ...db.base import BaseModel
 from .user import User
 
-
 # ------------------- 1. Роли участников команды -------------------
+
 
 class TeamMemberRole(BaseModel):
     """Роли участников внутри команды"""
+
     id = AutoField()
     name = CharField(max_length=50, unique=True)  # 'owner', 'admin', 'member'
     description = TextField(null=True)
@@ -32,7 +35,7 @@ class TeamMemberRole(BaseModel):
                 'can_manage_team': True,
                 'can_manage_projects': True,
                 'can_invite_members': True,
-                'can_remove_members': True
+                'can_remove_members': True,
             },
             {
                 'name': 'admin',
@@ -41,7 +44,7 @@ class TeamMemberRole(BaseModel):
                 'can_manage_team': False,
                 'can_manage_projects': True,
                 'can_invite_members': True,
-                'can_remove_members': True
+                'can_remove_members': True,
             },
             {
                 'name': 'member',
@@ -50,16 +53,18 @@ class TeamMemberRole(BaseModel):
                 'can_manage_team': False,
                 'can_manage_projects': False,
                 'can_invite_members': False,
-                'can_remove_members': False
-            }
+                'can_remove_members': False,
+            },
         ]
         return roles
 
 
 # ------------------- 2. Команды -------------------
 
+
 class Team(BaseModel):
     """Команды пользователей"""
+
     id = AutoField()
     name = CharField(max_length=100, index=True)
     slug = CharField(max_length=100, unique=True, index=True)  # URL-friendly имя
@@ -95,7 +100,9 @@ class Team(BaseModel):
 
     def refresh_invite_code(self):
         """Обновление кода приглашения (если истек или нужен новый)"""
-        if not self.invite_code or (self.invite_code_expires and self.invite_code_expires < datetime.now()):
+        if not self.invite_code or (
+            self.invite_code_expires and self.invite_code_expires < datetime.now()
+        ):
             return self.generate_invite_code()
         return self.invite_code
 
@@ -116,8 +123,10 @@ class Team(BaseModel):
 
 # ------------------- 3. Участники команд -------------------
 
+
 class TeamMember(BaseModel):
     """Связь пользователей с командами"""
+
     id = AutoField()
 
     team = ForeignKeyField(Team, backref='members', on_delete='CASCADE', index=True)
@@ -125,7 +134,9 @@ class TeamMember(BaseModel):
     role = ForeignKeyField(TeamMemberRole, on_delete='RESTRICT')
 
     # Кто добавил
-    created_by = ForeignKeyField(User, backref='added_team_members', on_delete='RESTRICT')
+    created_by = ForeignKeyField(
+        User, backref='added_team_members', on_delete='RESTRICT'
+    )
 
     # Статус участника
     is_active = BooleanField(default=True, index=True)
@@ -153,6 +164,7 @@ class TeamMember(BaseModel):
         # Проверяем кастомные права
         if self.custom_permissions:
             import json
+
             custom = json.loads(self.custom_permissions)
             return custom.get(permission, False)
 
@@ -169,19 +181,25 @@ class TeamMember(BaseModel):
 
 # ------------------- 4. Приглашения -------------------
 
+
 class TeamInvitation(BaseModel):
     """Приглашения в команду"""
+
     id = AutoField()
 
     team = ForeignKeyField(Team, backref='invitations', on_delete='CASCADE', index=True)
     invited_by = ForeignKeyField(User, backref='sent_invitations', on_delete='RESTRICT')
-    invited_user = ForeignKeyField(User, backref='received_invitations', null=True, on_delete='SET NULL')
+    invited_user = ForeignKeyField(
+        User, backref='received_invitations', null=True, on_delete='SET NULL'
+    )
 
     # Код приглашения (можно использовать как ссылку)
     code = CharField(max_length=32, unique=True, index=True)
 
     # Email или username для приглашения
-    invitee_username = CharField(max_length=50, null=True)  # Если приглашаем по username
+    invitee_username = CharField(
+        max_length=50, null=True
+    )  # Если приглашаем по username
     invitee_email = CharField(max_length=255, null=True)  # Если по email
 
     # Предлагаемая роль
@@ -195,10 +213,10 @@ class TeamInvitation(BaseModel):
             ('accepted', 'Принято'),
             ('declined', 'Отклонено'),
             ('expired', 'Истекло'),
-            ('cancelled', 'Отменено')
+            ('cancelled', 'Отменено'),
         ],
         default='pending',
-        index=True
+        index=True,
     )
 
     # Временные метки
@@ -217,9 +235,16 @@ class TeamInvitation(BaseModel):
         )
 
     @classmethod
-    def create_invitation(cls, team, invited_by, proposed_role,
-                          invitee_username=None, invitee_email=None,
-                          invited_user=None, message=None):
+    def create_invitation(
+        cls,
+        team,
+        invited_by,
+        proposed_role,
+        invitee_username=None,
+        invitee_email=None,
+        invited_user=None,
+        message=None,
+    ):
         """Создание приглашения"""
         code = secrets.token_urlsafe(16)
         expires_at = datetime.now() + timedelta(days=7)
@@ -233,7 +258,7 @@ class TeamInvitation(BaseModel):
             invitee_email=invitee_email,
             proposed_role=proposed_role,
             expires_at=expires_at,
-            message=message
+            message=message,
         )
 
     def accept(self):
@@ -247,7 +272,7 @@ class TeamInvitation(BaseModel):
             team=self.team,
             user=self.invited_user or User.get(username=self.invitee_username),
             role=self.proposed_role,
-            created_by=self.invited_by
+            created_by=self.invited_by,
         )
 
         # Обновляем счетчик участников

@@ -1,17 +1,19 @@
+import json
+from datetime import datetime, timedelta
 from typing import Optional
 
 from peewee import *
-from datetime import datetime, timedelta
-import json
-from ...db.base import BaseModel
-from .user import User
-from .project import Project, ProjectMember
 
+from ...db.base import BaseModel
+from .project import Project, ProjectMember
+from .user import User
 
 # ------------------- 1. Статусы задач -------------------
 
+
 class TaskStatus(BaseModel):
     """Статусы задач"""
+
     id = AutoField()
     name = CharField(max_length=50, unique=True)
     display_name = CharField(max_length=100)
@@ -32,7 +34,7 @@ class TaskStatus(BaseModel):
                 'color': '#757575',
                 'order': 10,
                 'is_final': False,
-                'is_blocking': False
+                'is_blocking': False,
             },
             {
                 'name': 'in_progress',
@@ -40,7 +42,7 @@ class TaskStatus(BaseModel):
                 'color': '#1976d2',
                 'order': 20,
                 'is_final': False,
-                'is_blocking': False
+                'is_blocking': False,
             },
             {
                 'name': 'review',
@@ -48,7 +50,7 @@ class TaskStatus(BaseModel):
                 'color': '#ed6c02',
                 'order': 30,
                 'is_final': False,
-                'is_blocking': False
+                'is_blocking': False,
             },
             {
                 'name': 'completed',
@@ -56,7 +58,7 @@ class TaskStatus(BaseModel):
                 'color': '#2e7d32',
                 'order': 40,
                 'is_final': True,
-                'is_blocking': False
+                'is_blocking': False,
             },
             {
                 'name': 'blocked',
@@ -64,16 +66,18 @@ class TaskStatus(BaseModel):
                 'color': '#d32f2f',
                 'order': 5,
                 'is_final': False,
-                'is_blocking': True
-            }
+                'is_blocking': True,
+            },
         ]
         return statuses
 
 
 # ------------------- 2. Типы действий на зависимостях -------------------
 
+
 class DependencyActionType(BaseModel):
     """Типы действий, которые можно выполнить при срабатывании зависимости"""
+
     id = AutoField()
     name = CharField(max_length=50, unique=True)
     code = CharField(max_length=50, unique=True)
@@ -95,7 +99,7 @@ class DependencyActionType(BaseModel):
                 'description': 'Отправить уведомление в Telegram исполнителю задачи',
                 'requires_target_user': False,
                 'requires_template': True,
-                'supports_delay': False
+                'supports_delay': False,
             },
             {
                 'name': 'Уведомить создателя исходной задачи',
@@ -103,7 +107,7 @@ class DependencyActionType(BaseModel):
                 'description': 'Отправить уведомление в Telegram создателю задачи',
                 'requires_target_user': False,
                 'requires_template': True,
-                'supports_delay': False
+                'supports_delay': False,
             },
             {
                 'name': 'Уведомить конкретного пользователя',
@@ -111,7 +115,7 @@ class DependencyActionType(BaseModel):
                 'description': 'Отправить уведомление конкретному пользователю',
                 'requires_target_user': True,
                 'requires_template': True,
-                'supports_delay': True
+                'supports_delay': True,
             },
             {
                 'name': 'Изменить статус задачи',
@@ -119,7 +123,7 @@ class DependencyActionType(BaseModel):
                 'description': 'Автоматически изменить статус целевой задачи',
                 'requires_target_user': False,
                 'requires_template': False,
-                'supports_delay': True
+                'supports_delay': True,
             },
             {
                 'name': 'Создать подзадачу',
@@ -127,16 +131,18 @@ class DependencyActionType(BaseModel):
                 'description': 'Создать подзадачу в целевой задаче',
                 'requires_target_user': True,
                 'requires_template': False,
-                'supports_delay': False
-            }
+                'supports_delay': False,
+            },
         ]
         return types
 
 
 # ------------------- 3. Задачи -------------------
 
+
 class Task(BaseModel):
     """Задачи в проекте"""
+
     id = AutoField()
     project = ForeignKeyField(Project, backref='tasks', on_delete='CASCADE')
 
@@ -148,8 +154,12 @@ class Task(BaseModel):
     status = ForeignKeyField(TaskStatus, on_delete='RESTRICT', index=True)
 
     # Участники
-    assignee = ForeignKeyField(User, backref='assigned_tasks', on_delete='SET NULL', null=True, index=True)
-    creator = ForeignKeyField(User, backref='created_tasks', on_delete='RESTRICT', index=True)
+    assignee = ForeignKeyField(
+        User, backref='assigned_tasks', on_delete='SET NULL', null=True, index=True
+    )
+    creator = ForeignKeyField(
+        User, backref='created_tasks', on_delete='RESTRICT', index=True
+    )
 
     # Временные метки
     created_at = DateTimeField(default=datetime.now, index=True)
@@ -180,7 +190,7 @@ class Task(BaseModel):
         )
 
     def __str__(self):
-        return f"[{self.project.slug}] #{self.id}: {self.name}"
+        return f'[{self.project.slug}] #{self.id}: {self.name}'
 
     @property
     def metadata_dict(self):
@@ -199,13 +209,19 @@ class Task(BaseModel):
 
 # ------------------- 4. Зависимости задач -------------------
 
+
 class TaskDependency(BaseModel):
     """Зависимости между задачами (рёбра графа)"""
+
     id = AutoField()
 
     project = ForeignKeyField(Project, backref='dependencies', on_delete='CASCADE')
-    source_task = ForeignKeyField(Task, backref='outgoing_dependencies', on_delete='CASCADE')
-    target_task = ForeignKeyField(Task, backref='incoming_dependencies', on_delete='CASCADE')
+    source_task = ForeignKeyField(
+        Task, backref='outgoing_dependencies', on_delete='CASCADE'
+    )
+    target_task = ForeignKeyField(
+        Task, backref='incoming_dependencies', on_delete='CASCADE'
+    )
 
     dependency_type = CharField(max_length=50, default='simple', index=True)
     description = TextField(null=True)
@@ -226,8 +242,10 @@ class TaskDependency(BaseModel):
 
 # ------------------- 5. Действия на зависимостях -------------------
 
+
 class DependencyAction(BaseModel):
     """Действия, выполняемые при срабатывании зависимости"""
+
     id = AutoField()
 
     dependency = ForeignKeyField(TaskDependency, backref='actions', on_delete='CASCADE')
@@ -251,8 +269,10 @@ class DependencyAction(BaseModel):
 
 # ------------------- 6. События задач -------------------
 
+
 class TaskEvent(BaseModel):
     """События, происходящие с задачами"""
+
     id = AutoField()
 
     project = ForeignKeyField(Project, backref='task_events', on_delete='CASCADE')
@@ -283,14 +303,16 @@ class TaskEvent(BaseModel):
             event_type=event_type,
             old_value=str(old_value) if old_value else None,
             new_value=str(new_value) if new_value else None,
-            metadata=json.dumps(metadata) if metadata else None
+            metadata=json.dumps(metadata) if metadata else None,
         )
 
 
 # ------------------- 7. Запланированные действия -------------------
 
+
 class ScheduledAction(BaseModel):
     """Отложенные действия (уведомления о дедлайнах и т.д.)"""
+
     id = AutoField()
 
     project = ForeignKeyField(Project, backref='scheduled_actions', on_delete='CASCADE')
@@ -300,7 +322,9 @@ class ScheduledAction(BaseModel):
     scheduled_for = DateTimeField(index=True)
     executed_at = DateTimeField(null=True)
     payload = TextField(null=True)
-    dependency_action = ForeignKeyField(DependencyAction, null=True, on_delete='SET NULL')
+    dependency_action = ForeignKeyField(
+        DependencyAction, null=True, on_delete='SET NULL'
+    )
 
     status = CharField(max_length=20, default='pending', index=True)
     created_at = DateTimeField(default=datetime.now)
@@ -313,7 +337,9 @@ class ScheduledAction(BaseModel):
         )
 
     @classmethod
-    def schedule_deadline_notification(cls, task: Task, hours_before: int = 24) -> Optional['ScheduledAction']:
+    def schedule_deadline_notification(
+        cls, task: Task, hours_before: int = 24
+    ) -> Optional['ScheduledAction']:
         """Запланировать уведомление о приближении дедлайна"""
         if not task.deadline:
             return None
@@ -327,5 +353,5 @@ class ScheduledAction(BaseModel):
             task=task,
             action_type='deadline_approaching',
             scheduled_for=notify_time,
-            payload=json.dumps({'hours_before': hours_before})
+            payload=json.dumps({'hours_before': hours_before}),
         )

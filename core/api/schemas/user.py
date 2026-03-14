@@ -1,9 +1,11 @@
 # core/api/schemas/user.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
-from pydantic import BaseModel, Field, EmailStr, validator, ConfigDict, model_validator
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-import re
 import json
+import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator, validator
+
 
 # ---------- Базовые схемы ----------
 class UserBase(BaseModel):
@@ -15,9 +17,12 @@ class UserBase(BaseModel):
 
     @validator('username')
     def validate_username(cls, v):
-        if not re.match("^[a-zA-Z0-9_.-]+$", v):
-            raise ValueError('Username can only contain letters, numbers, underscores, dots and hyphens')
+        if not re.match('^[a-zA-Z0-9_.-]+$', v):
+            raise ValueError(
+                'Username can only contain letters, numbers, underscores, dots and hyphens'
+            )
         return v.lower()
+
 
 # ---------- Регистрация и авторизация ----------
 class UserRegister(UserBase):
@@ -33,9 +38,11 @@ class UserRegister(UserBase):
             raise ValueError('Password must contain digit')
         return v
 
+
 class UserLogin(BaseModel):
     username: str
     password: str
+
 
 class TelegramVerify(BaseModel):
     user_id: int
@@ -43,8 +50,10 @@ class TelegramVerify(BaseModel):
     tg_id: Optional[int] = None
     tg_chat_id: Optional[int] = None
 
+
 class RefreshToken(BaseModel):
     refresh_token: str
+
 
 # ---------- Ответы ----------
 class UserResponse(UserBase):
@@ -61,8 +70,10 @@ class UserResponse(UserBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class UserProfileResponse(BaseModel):
     """Схема для ответа с профилем пользователя"""
+
     id: int
     first_name: str
     last_name: str
@@ -100,27 +111,34 @@ class UserProfileResponse(BaseModel):
                 'created_at': data.created_at,
                 'last_login': data.last_login,
                 'last_activity': data.last_activity,
-                'theme_preferences': data.theme_preferences_dict if hasattr(data, 'theme_preferences_dict') else {},
-                'notification_settings': data.notification_settings_dict if hasattr(data, 'notification_settings_dict') else {},
+                'theme_preferences': data.theme_preferences_dict
+                if hasattr(data, 'theme_preferences_dict')
+                else {},
+                'notification_settings': data.notification_settings_dict
+                if hasattr(data, 'notification_settings_dict')
+                else {},
             }
         return data
+
 
 class AuthResponse(BaseModel):
     access_token: str
     refresh_token: Optional[str] = None
-    token_type: str = "bearer"
+    token_type: str = 'bearer'
     expires_at: Optional[datetime] = None
     user: UserProfileResponse
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class TelegramCodeResponse(BaseModel):
     requires_verification: bool = True
     user_id: int
     tg_code: str
-    message: str = "Verification code sent to Telegram"
+    message: str = 'Verification code sent to Telegram'
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class LoginResponse(BaseModel):
     requires_verification: bool
@@ -129,10 +147,11 @@ class LoginResponse(BaseModel):
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
     user: Optional[UserProfileResponse] = None
-    token_type: str = "bearer"
+    token_type: str = 'bearer'
     expires_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class SessionResponse(BaseModel):
     id: int
@@ -148,6 +167,7 @@ class SessionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class RecoveryInitiateResponse(BaseModel):
     success: bool
     message: str
@@ -157,11 +177,13 @@ class RecoveryInitiateResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class RecoveryResetResponse(BaseModel):
     success: bool
     message: str
 
     model_config = ConfigDict(from_attributes=True)
+
 
 # ---------- Обновление профиля ----------
 class UserUpdate(BaseModel):
@@ -171,6 +193,7 @@ class UserUpdate(BaseModel):
     tg_username: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -188,12 +211,14 @@ class PasswordChange(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class ThemePreferences(BaseModel):
-    mode: Optional[str] = "light"
-    primary_color: Optional[str] = "#1976d2"
-    language: Optional[str] = "ru"
+    mode: Optional[str] = 'light'
+    primary_color: Optional[str] = '#1976d2'
+    language: Optional[str] = 'ru'
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class NotificationSettings(BaseModel):
     telegram: Optional[bool] = True
@@ -204,11 +229,13 @@ class NotificationSettings(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 # ---------- Админ ----------
 class UserRoleChange(BaseModel):
     role_name: str
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class UserStatsResponse(BaseModel):
     total_users: int
@@ -218,6 +245,7 @@ class UserStatsResponse(BaseModel):
     by_role: Dict[str, int]
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class UserSearchParams(BaseModel):
     query: Optional[str] = None

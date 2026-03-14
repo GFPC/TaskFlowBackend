@@ -1,8 +1,18 @@
 # core/api/main.py
 from fastapi import APIRouter
-from .routes import auth_router, users_router, admin_router, roles_router, telegram_router, teams, projects, tasks
 
-api_router = APIRouter(prefix="/api/v1")
+from .routes import (
+    admin_router,
+    auth_router,
+    projects,
+    roles_router,
+    tasks,
+    teams,
+    telegram_router,
+    users_router,
+)
+
+api_router = APIRouter(prefix='/api/v1')
 
 api_router.include_router(auth_router)
 api_router.include_router(users_router)

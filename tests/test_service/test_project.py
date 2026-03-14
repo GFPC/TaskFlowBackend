@@ -1,27 +1,38 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
 import json
-import sys
 import os
+import sys
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from peewee import SqliteDatabase
-from core.db.models.user import User, UserRole
-from core.db.models.team import Team, TeamMember, TeamMemberRole
-from core.db.models.project import Project, ProjectRole, ProjectMember, ProjectInvitation
-from core.db.models.task import (
-    Task, TaskStatus, TaskDependency,
-    DependencyAction, DependencyActionType,
-    TaskEvent, ScheduledAction
+
+from core.db.models.project import (
+    Project,
+    ProjectInvitation,
+    ProjectMember,
+    ProjectRole,
 )
-from core.services.TeamService import TeamService
+from core.db.models.task import (
+    DependencyAction,
+    DependencyActionType,
+    ScheduledAction,
+    Task,
+    TaskDependency,
+    TaskEvent,
+    TaskStatus,
+)
+from core.db.models.team import Team, TeamMember, TeamMemberRole
+from core.db.models.user import User, UserRole
 from core.services.ProjectService import ProjectService
 from core.services.TaskService import TaskService
-
+from core.services.TeamService import TeamService
 
 # ------------------- FIXTURES -------------------
+
 
 @pytest.fixture(scope='function')
 def test_db():
@@ -30,11 +41,22 @@ def test_db():
 
     # Все модели, включая все модели Task
     models = [
-        User, UserRole,
-        Team, TeamMember, TeamMemberRole,
-        Project, ProjectRole, ProjectMember, ProjectInvitation,
-        TaskStatus, DependencyActionType,  # Сначала справочники
-        Task, TaskDependency, DependencyAction, TaskEvent, ScheduledAction  # Потом основные таблицы
+        User,
+        UserRole,
+        Team,
+        TeamMember,
+        TeamMemberRole,
+        Project,
+        ProjectRole,
+        ProjectMember,
+        ProjectInvitation,
+        TaskStatus,
+        DependencyActionType,  # Сначала справочники
+        Task,
+        TaskDependency,
+        DependencyAction,
+        TaskEvent,
+        ScheduledAction,  # Потом основные таблицы
     ]
 
     test_db.bind(models, bind_refs=False, bind_backrefs=False)
@@ -77,8 +99,7 @@ def task_service(test_db):
 def user_role(test_db):
     """Роль пользователя в системе"""
     role, _ = UserRole.get_or_create(
-        name='Работник',
-        defaults={'description': 'Test', 'priority': 1}
+        name='Работник', defaults={'description': 'Test', 'priority': 1}
     )
     return role
 
@@ -93,7 +114,7 @@ def test_user(test_db, user_role):
         password_hash='hash',
         email='ivanov@test.com',
         role=user_role,
-        is_active=True
+        is_active=True,
     )
 
 
@@ -107,7 +128,7 @@ def second_user(test_db, user_role):
         password_hash='hash',
         email='petrov@test.com',
         role=user_role,
-        is_active=True
+        is_active=True,
     )
 
 
@@ -121,9 +142,7 @@ def team_owner(test_db, team_service, test_user):
 def test_team(test_db, team_service, team_owner):
     """Тестовая команда"""
     result = team_service.create_team(
-        name='Test Team',
-        owner=team_owner,
-        description='Test Description'
+        name='Test Team', owner=team_owner, description='Test Description'
     )
     return result['team']
 
@@ -132,10 +151,7 @@ def test_team(test_db, team_service, team_owner):
 def team_admin(test_db, team_service, test_team, team_owner, second_user):
     """Администратор команды"""
     team_service.add_member(
-        team=test_team,
-        user=second_user,
-        role_name='admin',
-        created_by=team_owner
+        team=test_team, user=second_user, role_name='admin', created_by=team_owner
     )
     return second_user
 
@@ -150,14 +166,11 @@ def team_member(test_db, team_service, test_team, team_owner):
         password_hash='hash',
         email='sergeev@test.com',
         role_id=1,
-        is_active=True
+        is_active=True,
     )
 
     team_service.add_member(
-        team=test_team,
-        user=user,
-        role_name='member',
-        created_by=team_owner
+        team=test_team, user=user, role_name='member', created_by=team_owner
     )
     return user
 
@@ -172,14 +185,11 @@ def another_team_member(test_db, team_service, test_team, team_owner):
         password_hash='hash',
         email='annova@test.com',
         role_id=1,
-        is_active=True
+        is_active=True,
     )
 
     team_service.add_member(
-        team=test_team,
-        user=user,
-        role_name='member',
-        created_by=team_owner
+        team=test_team, user=user, role_name='member', created_by=team_owner
     )
     return user
 
@@ -191,12 +201,9 @@ def project_owner(test_db, project_service, test_team, team_owner):
         team=test_team,
         name='Test Project',
         created_by=team_owner,
-        description='Test Description'
+        description='Test Description',
     )
-    return {
-        'project': result['project'],
-        'user': team_owner
-    }
+    return {'project': result['project'], 'user': team_owner}
 
 
 @pytest.fixture
@@ -209,10 +216,7 @@ def test_project(project_owner):
 def project_manager(test_db, project_service, test_project, team_owner, second_user):
     """Менеджер проекта"""
     project_service.add_member(
-        project=test_project,
-        user=second_user,
-        role_name='manager',
-        added_by=team_owner
+        project=test_project, user=second_user, role_name='manager', added_by=team_owner
     )
     return second_user
 
@@ -224,7 +228,7 @@ def project_developer(test_db, project_service, test_project, team_owner, team_m
         project=test_project,
         user=team_member,
         role_name='developer',
-        added_by=team_owner
+        added_by=team_owner,
     )
     return team_member
 
@@ -236,6 +240,7 @@ def todo_status(task_service):
 
 
 # ------------------- ТЕСТЫ ВАЛИДАЦИИ -------------------
+
 
 class TestProjectValidation:
     """Тесты валидации проектов"""
@@ -261,9 +266,7 @@ class TestProjectValidation:
 
     def test_get_unique_slug(self, project_service, test_team, team_owner):
         project_service.create_project(
-            team=test_team,
-            name='Test Project',
-            created_by=team_owner
+            team=test_team, name='Test Project', created_by=team_owner
         )
 
         slug = project_service._get_unique_slug('test-project', test_team.id)
@@ -271,6 +274,7 @@ class TestProjectValidation:
 
 
 # ------------------- ТЕСТЫ СОЗДАНИЯ ПРОЕКТОВ -------------------
+
 
 class TestProjectCreation:
     """Тесты создания проектов"""
@@ -280,7 +284,7 @@ class TestProjectCreation:
             team=test_team,
             name='New Project',
             created_by=team_owner,
-            description='Description'
+            description='Description',
         )
 
         assert result['project'] is not None
@@ -298,54 +302,55 @@ class TestProjectCreation:
         assert member.user.id == team_owner.id
         assert member.role.name == 'owner'
 
-    def test_create_project_without_description(self, project_service, test_team, team_owner):
+    def test_create_project_without_description(
+        self, project_service, test_team, team_owner
+    ):
         result = project_service.create_project(
-            team=test_team,
-            name='New Project',
-            created_by=team_owner
+            team=test_team, name='New Project', created_by=team_owner
         )
 
         assert result['project'].description is None
 
-    def test_create_project_with_graph_data(self, project_service, test_team, team_owner):
+    def test_create_project_with_graph_data(
+        self, project_service, test_team, team_owner
+    ):
         graph_data = json.dumps({'nodes': [], 'edges': []})
 
         result = project_service.create_project(
             team=test_team,
             name='New Project',
             created_by=team_owner,
-            initial_graph_data=graph_data
+            initial_graph_data=graph_data,
         )
 
         assert result['project'].graph_data == graph_data
 
-    def test_create_project_no_permission(self, project_service, test_team, team_member):
-        with pytest.raises(PermissionError, match="You don't have permission to create projects in this team"):
+    def test_create_project_no_permission(
+        self, project_service, test_team, team_member
+    ):
+        with pytest.raises(
+            PermissionError,
+            match="You don't have permission to create projects in this team",
+        ):
             project_service.create_project(
-                team=test_team,
-                name='New Project',
-                created_by=team_member
+                team=test_team, name='New Project', created_by=team_member
             )
 
     def test_create_project_invalid_name(self, project_service, test_team, team_owner):
         with pytest.raises(ValueError, match='Invalid project name'):
             project_service.create_project(
-                team=test_team,
-                name='A',
-                created_by=team_owner
+                team=test_team, name='A', created_by=team_owner
             )
 
-    def test_create_project_duplicate_name_same_team(self, project_service, test_team, team_owner):
+    def test_create_project_duplicate_name_same_team(
+        self, project_service, test_team, team_owner
+    ):
         project_service.create_project(
-            team=test_team,
-            name='Same Name',
-            created_by=team_owner
+            team=test_team, name='Same Name', created_by=team_owner
         )
 
         result = project_service.create_project(
-            team=test_team,
-            name='Same Name',
-            created_by=team_owner
+            team=test_team, name='Same Name', created_by=team_owner
         )
 
         assert result['project'].slug == 'same-name-1'
@@ -353,15 +358,18 @@ class TestProjectCreation:
 
 # ------------------- ТЕСТЫ УПРАВЛЕНИЯ УЧАСТНИКАМИ ПРОЕКТА -------------------
 
+
 class TestProjectMembers:
     """Тесты управления участниками проекта"""
 
-    def test_add_member_success(self, project_service, test_project, team_member, team_owner):
+    def test_add_member_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         member = project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         assert member.user.id == team_member.id
@@ -371,13 +379,15 @@ class TestProjectMembers:
         test_project = Project.get_by_id(test_project.id)
         assert test_project.members_count == 2
 
-    def test_add_member_not_team_member(self, project_service, test_project, second_user, team_owner):
+    def test_add_member_not_team_member(
+        self, project_service, test_project, second_user, team_owner
+    ):
         with pytest.raises(ValueError, match='must be a team member'):
             project_service.add_member(
                 project=test_project,
                 user=second_user,
                 role_name='developer',
-                added_by=team_owner
+                added_by=team_owner,
             )
 
     def test_add_member_already_member(self, project_service, test_project, team_owner):
@@ -386,80 +396,87 @@ class TestProjectMembers:
                 project=test_project,
                 user=team_owner,
                 role_name='developer',
-                added_by=team_owner
+                added_by=team_owner,
             )
 
-    def test_add_member_no_permission(self, project_service, test_project, team_member, another_team_member):
-        with pytest.raises(PermissionError, match="You don't have permission to add members to this project"):
+    def test_add_member_no_permission(
+        self, project_service, test_project, team_member, another_team_member
+    ):
+        with pytest.raises(
+            PermissionError,
+            match="You don't have permission to add members to this project",
+        ):
             project_service.add_member(
                 project=test_project,
                 user=another_team_member,
                 role_name='developer',
-                added_by=team_member
+                added_by=team_member,
             )
 
-    def test_remove_member_success(self, project_service, test_project, team_member, team_owner):
+    def test_remove_member_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         result = project_service.remove_member(
-            project=test_project,
-            user=team_member,
-            removed_by=team_owner
+            project=test_project, user=team_member, removed_by=team_owner
         )
 
         assert result is True
 
         member = ProjectMember.get(
-            (ProjectMember.project == test_project) &
-            (ProjectMember.user == team_member)
+            (ProjectMember.project == test_project)
+            & (ProjectMember.user == team_member)
         )
         assert member.is_active is False
 
         test_project = Project.get_by_id(test_project.id)
         assert test_project.members_count == 1
 
-    def test_remove_member_cannot_remove_owner(self, project_service, test_project, team_owner):
+    def test_remove_member_cannot_remove_owner(
+        self, project_service, test_project, team_owner
+    ):
         with pytest.raises(ValueError, match='Cannot remove project owner'):
             project_service.remove_member(
-                project=test_project,
-                user=team_owner,
-                removed_by=team_owner
+                project=test_project, user=team_owner, removed_by=team_owner
             )
 
-    def test_change_member_role_success(self, project_service, test_project, team_member, team_owner):
+    def test_change_member_role_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         member = project_service.change_member_role(
             project=test_project,
             user=team_member,
             new_role_name='manager',
-            changed_by=team_owner
+            changed_by=team_owner,
         )
 
         assert member.role.name == 'manager'
 
-    def test_transfer_ownership_success(self, project_service, test_project, team_member, team_owner):
+    def test_transfer_ownership_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         result = project_service.transfer_ownership(
-            project=test_project,
-            new_owner=team_member,
-            current_owner=team_owner
+            project=test_project, new_owner=team_member, current_owner=team_owner
         )
 
         assert result['new_owner'].user.id == team_member.id
@@ -469,18 +486,21 @@ class TestProjectMembers:
 
 # ------------------- ТЕСТЫ ПРИГЛАШЕНИЙ В ПРОЕКТ -------------------
 
+
 class TestProjectInvitations:
     """Тесты приглашений в проект"""
 
-    def test_create_invitation_success(self, project_service, test_project, team_member, team_owner):
+    def test_create_invitation_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         invitation = project_service.create_invitation(
             project=test_project,
             invited_by=team_owner,
             proposed_role_name='developer',
             team_member=TeamMember.get(
-                (TeamMember.team == test_project.team) &
-                (TeamMember.user == team_member)
-            )
+                (TeamMember.team == test_project.team)
+                & (TeamMember.user == team_member)
+            ),
         )
 
         assert invitation.project.id == test_project.id
@@ -489,15 +509,17 @@ class TestProjectInvitations:
         assert invitation.invited_user.id == team_member.id
         assert invitation.status == 'pending'
 
-    def test_accept_invitation_success(self, project_service, test_project, team_member, team_owner):
+    def test_accept_invitation_success(
+        self, project_service, test_project, team_member, team_owner
+    ):
         invitation = project_service.create_invitation(
             project=test_project,
             invited_by=team_owner,
             proposed_role_name='developer',
             team_member=TeamMember.get(
-                (TeamMember.team == test_project.team) &
-                (TeamMember.user == team_member)
-            )
+                (TeamMember.team == test_project.team)
+                & (TeamMember.user == team_member)
+            ),
         )
 
         result = project_service.accept_invitation(invitation, team_member)
@@ -506,15 +528,17 @@ class TestProjectInvitations:
         assert result['member'].user.id == team_member.id
         assert result['member'].role.name == 'developer'
 
-    def test_accept_invitation_wrong_user(self, project_service, test_project, team_member, team_owner, team_admin):
+    def test_accept_invitation_wrong_user(
+        self, project_service, test_project, team_member, team_owner, team_admin
+    ):
         invitation = project_service.create_invitation(
             project=test_project,
             invited_by=team_owner,
             proposed_role_name='developer',
             team_member=TeamMember.get(
-                (TeamMember.team == test_project.team) &
-                (TeamMember.user == team_member)
-            )
+                (TeamMember.team == test_project.team)
+                & (TeamMember.user == team_member)
+            ),
         )
 
         with pytest.raises(PermissionError, match='another user'):
@@ -522,6 +546,7 @@ class TestProjectInvitations:
 
 
 # ------------------- ТЕСТЫ ПРАВ ДОСТУПА -------------------
+
 
 class TestProjectPermissions:
     """Тесты проверки прав в проекте"""
@@ -534,18 +559,20 @@ class TestProjectPermissions:
             last_name='Member',
             username='nonmember',
             password_hash='hash',
-            role_id=1
+            role_id=1,
         )
         assert project_service.is_member(non_member, test_project) is False
 
-    def test_can_manage_members(self, project_service, test_project, team_owner, team_member):
+    def test_can_manage_members(
+        self, project_service, test_project, team_owner, team_member
+    ):
         assert project_service.can_manage_members(team_owner, test_project) is True
 
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='manager',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         assert project_service.can_manage_members(team_member, test_project) is True
@@ -554,43 +581,49 @@ class TestProjectPermissions:
             project=test_project,
             user=team_member,
             new_role_name='developer',
-            changed_by=team_owner
+            changed_by=team_owner,
         )
 
         assert project_service.can_manage_members(team_member, test_project) is False
 
-    def test_can_edit_project(self, project_service, test_project, team_owner, team_member):
+    def test_can_edit_project(
+        self, project_service, test_project, team_owner, team_member
+    ):
         assert project_service.can_edit_project(team_owner, test_project) is True
 
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='manager',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         assert project_service.can_edit_project(team_member, test_project) is True
 
-    def test_can_delete_project(self, project_service, test_project, team_owner, team_member):
+    def test_can_delete_project(
+        self, project_service, test_project, team_owner, team_member
+    ):
         assert project_service.can_delete_project(team_owner, test_project) is True
 
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='manager',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         assert project_service.can_delete_project(team_member, test_project) is False
 
-    def test_can_create_tasks(self, project_service, test_project, team_owner, team_member):
+    def test_can_create_tasks(
+        self, project_service, test_project, team_owner, team_member
+    ):
         assert project_service.can_create_tasks(team_owner, test_project) is True
 
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         assert project_service.can_create_tasks(team_member, test_project) is True
@@ -599,18 +632,25 @@ class TestProjectPermissions:
             project=test_project,
             user=team_member,
             new_role_name='observer',
-            changed_by=team_owner
+            changed_by=team_owner,
         )
 
         assert project_service.can_create_tasks(team_member, test_project) is False
 
-    def test_can_edit_task_developer(self, project_service, test_project, team_owner, team_member, task_service,
-                                     todo_status):
+    def test_can_edit_task_developer(
+        self,
+        project_service,
+        test_project,
+        team_owner,
+        team_member,
+        task_service,
+        todo_status,
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         task = Task.create(
@@ -618,7 +658,7 @@ class TestProjectPermissions:
             name='Test Task',
             status=todo_status,
             creator=team_member,
-            assignee=team_member
+            assignee=team_member,
         )
 
         assert project_service.can_edit_task(team_member, task) is True
@@ -628,18 +668,25 @@ class TestProjectPermissions:
             name='Other Task',
             status=todo_status,
             creator=team_owner,
-            assignee=team_owner
+            assignee=team_owner,
         )
 
         assert project_service.can_edit_task(team_member, other_task) is False
 
-    def test_can_edit_task_manager(self, project_service, test_project, team_owner, team_member, task_service,
-                                   todo_status):
+    def test_can_edit_task_manager(
+        self,
+        project_service,
+        test_project,
+        team_owner,
+        team_member,
+        task_service,
+        todo_status,
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='manager',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         task = Task.create(
@@ -647,13 +694,14 @@ class TestProjectPermissions:
             name='Test Task',
             status=todo_status,
             creator=team_owner,
-            assignee=team_owner
+            assignee=team_owner,
         )
 
         assert project_service.can_edit_task(team_member, task) is True
 
 
 # ------------------- ТЕСТЫ УПРАВЛЕНИЯ ПРОЕКТОМ -------------------
+
 
 class TestProjectManagement:
     """Тесты управления проектом"""
@@ -664,7 +712,7 @@ class TestProjectManagement:
             updated_by=team_owner,
             name='Updated Name',
             description='Updated Description',
-            settings={'default_task_status': 'in_progress'}
+            settings={'default_task_status': 'in_progress'},
         )
 
         assert updated.name == 'Updated Name'
@@ -672,15 +720,10 @@ class TestProjectManagement:
         assert updated.settings_dict['default_task_status'] == 'in_progress'
 
     def test_save_graph_data(self, project_service, test_project, team_owner):
-        graph_data = {
-            'nodes': [{'id': '1', 'data': {'label': 'Task 1'}}],
-            'edges': []
-        }
+        graph_data = {'nodes': [{'id': '1', 'data': {'label': 'Task 1'}}], 'edges': []}
 
         updated = project_service.save_graph_data(
-            project=test_project,
-            graph_data=graph_data,
-            saved_by=team_owner
+            project=test_project, graph_data=graph_data, saved_by=team_owner
         )
 
         saved = json.loads(updated.graph_data)
@@ -695,12 +738,14 @@ class TestProjectManagement:
         assert test_project.status == 'archived'
         assert test_project.archived_at is not None
 
-    def test_delete_project(self, project_service, test_project, team_member, team_owner):
+    def test_delete_project(
+        self, project_service, test_project, team_member, team_owner
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         result = project_service.delete_project(test_project, team_owner)
@@ -709,7 +754,9 @@ class TestProjectManagement:
         test_project = Project.get_by_id(test_project.id)
         assert test_project.status == 'deleted'
 
-        members = project_service.get_project_members(test_project, include_inactive=True)
+        members = project_service.get_project_members(
+            test_project, include_inactive=True
+        )
         for member in members:
             if member.user.id != team_owner.id:
                 assert member.is_active is False
@@ -717,15 +764,18 @@ class TestProjectManagement:
 
 # ------------------- ТЕСТЫ ПОЛУЧЕНИЯ ДАННЫХ -------------------
 
+
 class TestProjectQueries:
     """Тесты запросов данных проектов"""
 
-    def test_get_user_projects(self, project_service, test_project, team_owner, team_member):
+    def test_get_user_projects(
+        self, project_service, test_project, team_owner, team_member
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         projects = project_service.get_user_projects(team_member)
@@ -748,15 +798,18 @@ class TestProjectQueries:
 
 # ------------------- ТЕСТЫ СТАТИСТИКИ -------------------
 
+
 class TestProjectStats:
     """Тесты статистики проектов"""
 
-    def test_get_project_stats(self, project_service, test_project, team_owner, team_member):
+    def test_get_project_stats(
+        self, project_service, test_project, team_owner, team_member
+    ):
         project_service.add_member(
             project=test_project,
             user=team_member,
             role_name='developer',
-            added_by=team_owner
+            added_by=team_owner,
         )
 
         stats = project_service.get_project_stats(test_project)

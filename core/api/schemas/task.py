@@ -1,15 +1,16 @@
 # core/api/schemas/task.py
 import json
-
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ------------------- СТАТУСЫ ЗАДАЧ -------------------
 
+
 class TaskStatusResponse(BaseModel):
     """Схема статуса задачи"""
+
     id: int
     name: str
     display_name: str
@@ -23,8 +24,10 @@ class TaskStatusResponse(BaseModel):
 
 # ------------------- ТИПЫ ДЕЙСТВИЙ -------------------
 
+
 class DependencyActionTypeResponse(BaseModel):
     """Схема типа действия на зависимости"""
+
     id: int
     name: str
     code: str
@@ -38,8 +41,10 @@ class DependencyActionTypeResponse(BaseModel):
 
 # ------------------- ЗАДАЧИ -------------------
 
+
 class TaskBase(BaseModel):
     """Базовая схема задачи"""
+
     name: str = Field(..., min_length=1, max_length=500)
     description: Optional[str] = None
     assignee_username: Optional[str] = None
@@ -52,11 +57,13 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     """Создание задачи"""
+
     project_slug: str
 
 
 class TaskUpdate(BaseModel):
     """Обновление задачи"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = None
     assignee_username: Optional[str] = None
@@ -69,6 +76,7 @@ class TaskUpdate(BaseModel):
 
 class TaskResponse(BaseModel):
     """Ответ с информацией о задаче"""
+
     id: int
     project_id: int
     project_slug: str
@@ -126,6 +134,7 @@ class TaskResponse(BaseModel):
 
 class TaskDetailResponse(TaskResponse):
     """Детальная информация о задаче"""
+
     incoming_dependencies: List['TaskDependencyResponse'] = []
     outgoing_dependencies: List['TaskDependencyResponse'] = []
     events: List['TaskEventResponse'] = []
@@ -135,13 +144,16 @@ class TaskDetailResponse(TaskResponse):
 
 class TaskStatusUpdate(BaseModel):
     """Изменение статуса задачи"""
+
     status: str
 
 
 # ------------------- ЗАВИСИМОСТИ -------------------
 
+
 class TaskDependencyBase(BaseModel):
     """Базовая схема зависимости"""
+
     source_task_id: int
     target_task_id: int
     dependency_type: str = 'simple'
@@ -150,11 +162,13 @@ class TaskDependencyBase(BaseModel):
 
 class TaskDependencyCreate(TaskDependencyBase):
     """Создание зависимости"""
+
     pass
 
 
 class TaskDependencyResponse(BaseModel):
     """Ответ с информацией о зависимости"""
+
     id: int
     project_id: int
     source_task_id: int
@@ -184,7 +198,9 @@ class TaskDependencyResponse(BaseModel):
                 'dependency_type': data.dependency_type,
                 'description': data.description,
                 'created_at': data.created_at,
-                'created_by_username': data.created_by.username if data.created_by else None,
+                'created_by_username': data.created_by.username
+                if data.created_by
+                else None,
                 'actions': [],
             }
         return data
@@ -192,8 +208,10 @@ class TaskDependencyResponse(BaseModel):
 
 # ------------------- ДЕЙСТВИЯ НА ЗАВИСИМОСТЯХ -------------------
 
+
 class DependencyActionCreate(BaseModel):
     """Создание действия на зависимости"""
+
     action_type_code: str
     target_user_username: Optional[str] = None
     target_status: Optional[str] = None
@@ -204,6 +222,7 @@ class DependencyActionCreate(BaseModel):
 
 class DependencyActionResponse(BaseModel):
     """Ответ с информацией о действии"""
+
     id: int
     dependency_id: int
     action_type_code: str
@@ -229,8 +248,12 @@ class DependencyActionResponse(BaseModel):
                 'action_type_code': data.action_type.code if data.action_type else None,
                 'action_type_name': data.action_type.name if data.action_type else None,
                 'target_user_id': data.target_user.id if data.target_user else None,
-                'target_user_username': data.target_user.username if data.target_user else None,
-                'target_status': data.target_status.name if data.target_status else None,
+                'target_user_username': data.target_user.username
+                if data.target_user
+                else None,
+                'target_status': data.target_status.name
+                if data.target_status
+                else None,
                 'message_template': data.message_template,
                 'delay_minutes': data.delay_minutes,
                 'execute_order': data.execute_order,
@@ -241,8 +264,10 @@ class DependencyActionResponse(BaseModel):
 
 # ------------------- СОБЫТИЯ -------------------
 
+
 class TaskEventResponse(BaseModel):
     """Ответ с информацией о событии задачи"""
+
     id: int
     task_id: int
     user_id: int
@@ -276,8 +301,10 @@ class TaskEventResponse(BaseModel):
 
 # ------------------- ГРАФ -------------------
 
+
 class GraphNodeData(BaseModel):
     """Данные узла графа"""
+
     id: str
     type: str = 'taskNode'
     data: Dict[str, Any]
@@ -286,6 +313,7 @@ class GraphNodeData(BaseModel):
 
 class GraphEdgeData(BaseModel):
     """Данные ребра графа"""
+
     id: str
     source: str
     target: str
@@ -297,6 +325,7 @@ class GraphEdgeData(BaseModel):
 
 class ProjectGraphResponse(BaseModel):
     """Ответ с данными графа проекта для ReactFlow"""
+
     nodes: List[GraphNodeData]
     edges: List[GraphEdgeData]
     viewport: Dict[str, Any] = {'x': 0, 'y': 0, 'zoom': 1}
@@ -304,8 +333,10 @@ class ProjectGraphResponse(BaseModel):
 
 # ------------------- СТАТИСТИКА -------------------
 
+
 class TaskStatsResponse(BaseModel):
     """Статистика по задачам проекта"""
+
     total: int
     by_status: Dict[str, Dict[str, Any]]
     by_assignee: Dict[str, int]
@@ -314,6 +345,7 @@ class TaskStatsResponse(BaseModel):
 
 class UserTaskStatsResponse(BaseModel):
     """Статистика по задачам пользователя"""
+
     assigned: int
     created: int
     completed: int
@@ -324,8 +356,10 @@ class UserTaskStatsResponse(BaseModel):
 
 # ------------------- ОТЛОЖЕННЫЕ ДЕЙСТВИЯ -------------------
 
+
 class ScheduledActionResponse(BaseModel):
     """Ответ с информацией о запланированном действии"""
+
     id: int
     task_id: int
     task_name: str

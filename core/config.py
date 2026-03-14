@@ -1,8 +1,9 @@
 # core/config.py
-from peewee import *
 import os
-from dotenv import load_dotenv
 from typing import List
+
+from dotenv import load_dotenv
+from peewee import *
 
 load_dotenv()
 
@@ -26,7 +27,7 @@ else:
         user=os.getenv('DB_USER', 'root'),
         password=os.getenv('DB_PASSWORD', ''),
         host=os.getenv('DB_HOST', 'localhost'),
-        port=int(os.getenv('DB_PORT', 3306))
+        port=int(os.getenv('DB_PORT', 3306)),
     )
 
 
@@ -43,7 +44,7 @@ class Settings:
     API_HOST = os.getenv('API_HOST', 'localhost')
     API_PORT = int(os.getenv('API_PORT', 8000))
     ALLOWED_ORIGINS: List[str] = [
-        "*",
+        '*',
     ]
 
     # Frontend
@@ -55,11 +56,11 @@ class Settings:
 
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
-    ALGORITHM = "HS256"
+    ALGORITHM = 'HS256'
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
     REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-    DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
+    DEBUG: bool = os.getenv('DEBUG', 'True').lower() == 'true'
 
 
 settings = Settings()

@@ -1,8 +1,9 @@
 # tests/conftest.py
 import os
 import sys
-import pytest
 from pathlib import Path
+
+import pytest
 
 # Добавляем корневую директорию в PYTHONPATH
 root_dir = Path(__file__).parent.parent
@@ -13,10 +14,11 @@ os.environ['TESTING'] = '1'
 
 # Импортируем и настраиваем БД
 from peewee import SqliteDatabase
-from core.db.models.user import User, UserRole, AuthSession, RecoveryCode
+
+from core.db.models.user import AuthSession, RecoveryCode, User, UserRole
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def test_db():
     """Создает тестовую БД на всю сессию"""
     database = SqliteDatabase(':memory:')
@@ -30,8 +32,8 @@ def test_db():
         defaults={
             'description': 'Стандартный пользователь',
             'priority': 1,
-            'permissions': '{"view_tasks": true, "edit_own_tasks": true}'
-        }
+            'permissions': '{"view_tasks": true, "edit_own_tasks": true}',
+        },
     )
 
     UserRole.get_or_create(
@@ -39,8 +41,8 @@ def test_db():
         defaults={
             'description': 'Управляет задачами проекта',
             'priority': 50,
-            'permissions': '{"view_tasks": true, "edit_all_tasks": true, "manage_team": true}'
-        }
+            'permissions': '{"view_tasks": true, "edit_all_tasks": true, "manage_team": true}',
+        },
     )
 
     UserRole.get_or_create(
@@ -48,8 +50,8 @@ def test_db():
         defaults={
             'description': 'Полный доступ к системе',
             'priority': 100,
-            'permissions': '{"all": true}'
-        }
+            'permissions': '{"all": true}',
+        },
     )
 
     yield database

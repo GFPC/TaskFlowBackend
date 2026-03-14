@@ -9,20 +9,21 @@ byte sizes). Optimized algorithms from graph theory (topological sort,
 critical path, SCC, shortest paths) are implemented with minimal overhead.
 """
 
-import struct
-from collections import defaultdict, deque
-from typing import Dict, List, Tuple, Optional, Set, Iterator, Any
-import unittest
 import random
+import struct
 import time
-
+import unittest
+from collections import defaultdict, deque
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 # ----------------------------------------------------------------------
 #  Field and Schema Definition
 # ----------------------------------------------------------------------
 
+
 class Field:
     """Describes a single field within a binary edge record."""
+
     __slots__ = ('name', 'fmt', 'size', 'offset', 'dtype')
     _format_map = {
         'uint8': ('B', 1),
@@ -115,6 +116,7 @@ class EdgeSchema:
 #  Graph Storage – compact binary edge container
 # ----------------------------------------------------------------------
 
+
 class GraphStorage:
     """Stores edges as a contiguous array of fixed‑length binary records."""
 
@@ -150,10 +152,13 @@ class GraphStorage:
             if field_name in self.schema.offsets:
                 max_val = self.schema.get_max_value(field_name)
                 if not isinstance(value, (int, float)):
-                    raise ValueError(f'{field_name} must be a number, got {type(value)}')
+                    raise ValueError(
+                        f'{field_name} must be a number, got {type(value)}'
+                    )
                 if value < 0 or value > max_val:
                     raise ValueError(
-                        f'{field_name} {value} out of range for {self.schema.get_field_dtype(field_name)} (0-{max_val})')
+                        f'{field_name} {value} out of range for {self.schema.get_field_dtype(field_name)} (0-{max_val})'
+                    )
 
         start = self._num_edges * self.schema.total_size
         self._buffer.extend(b'\x00' * self.schema.total_size)
@@ -185,8 +190,11 @@ class GraphStorage:
             vertices.add(tgt_unpack(self._buffer, offset + tgt_ofs)[0])
         return vertices
 
-    def adjacency_lists_fast(self) -> Tuple[Dict[int, List[Tuple[int, int, int]]],
-    Dict[int, List[Tuple[int, int, int]]]]:
+    def adjacency_lists_fast(
+        self,
+    ) -> Tuple[
+        Dict[int, List[Tuple[int, int, int]]], Dict[int, List[Tuple[int, int, int]]]
+    ]:
         out = defaultdict(list)
         inn = defaultdict(list)
         sz = self.schema.total_size
@@ -221,6 +229,7 @@ class GraphStorage:
 # ----------------------------------------------------------------------
 #  Advanced Graph Algorithms - FIXED VERSION
 # ----------------------------------------------------------------------
+
 
 class GraphAlgorithms:
     """Collection of ultra‑fast graph algorithms."""
@@ -337,7 +346,9 @@ class GraphAlgorithms:
                     if has_cycle and cycle_count > 100:
                         break
         except RecursionError:
-            return GraphAlgorithms._has_cycle_iterative(out_edges, vertices), cycle_count
+            return GraphAlgorithms._has_cycle_iterative(
+                out_edges, vertices
+            ), cycle_count
 
         return has_cycle, cycle_count
 
@@ -371,8 +382,9 @@ class GraphAlgorithms:
         return False
 
     @staticmethod
-    def find_cycles_ultra_fast(storage: GraphStorage, max_cycles: int = 10,
-                               force_vertices: List[int] = None) -> List[List[int]]:
+    def find_cycles_ultra_fast(
+        storage: GraphStorage, max_cycles: int = 10, force_vertices: List[int] = None
+    ) -> List[List[int]]:
         out_edges, _ = storage.adjacency_lists_fast()
         vertices = list(storage.get_vertices())
         cycles = []
@@ -415,7 +427,9 @@ class GraphAlgorithms:
         return cycles[:max_cycles]
 
     @staticmethod
-    def critical_path(storage: GraphStorage, weight_field: str) -> Tuple[int, List[int]]:
+    def critical_path(
+        storage: GraphStorage, weight_field: str
+    ) -> Tuple[int, List[int]]:
         if not GraphAlgorithms.is_dag(storage):
             raise ValueError('Critical path requires a DAG.')
 
@@ -445,10 +459,12 @@ class GraphAlgorithms:
         return max_dist, path
 
     @staticmethod
-    def shortest_path(storage: GraphStorage,
-                      source: int,
-                      target: int,
-                      weight_field: Optional[str] = None) -> Tuple[Optional[float], List[int]]:
+    def shortest_path(
+        storage: GraphStorage,
+        source: int,
+        target: int,
+        weight_field: Optional[str] = None,
+    ) -> Tuple[Optional[float], List[int]]:
         out_edges, _ = storage.adjacency_lists_fast()
         vertices = storage.get_vertices()
 
@@ -466,6 +482,7 @@ class GraphAlgorithms:
             return None, []
 
         import heapq
+
         dist = {v: float('inf') for v in vertices}
         prev = {v: None for v in vertices}
         dist[source] = 0
@@ -500,22 +517,27 @@ class GraphAlgorithms:
 #  Extended Schema and Graph Generator
 # ----------------------------------------------------------------------
 
+
 def make_extended_schema():
-    return EdgeSchema([
-        Field('source', 'uint16'),
-        Field('target', 'uint16'),
-        Field('type', 'uint8'),
-        Field('priority', 'uint8'),
-        Field('duration', 'uint16'),
-        Field('flags', 'uint8'),
-        Field('team', 'uint8'),
-        Field('complexity', 'uint8'),
-        Field('reserved', 'uint16'),
-    ])
+    return EdgeSchema(
+        [
+            Field('source', 'uint16'),
+            Field('target', 'uint16'),
+            Field('type', 'uint8'),
+            Field('priority', 'uint8'),
+            Field('duration', 'uint16'),
+            Field('flags', 'uint8'),
+            Field('team', 'uint8'),
+            Field('complexity', 'uint8'),
+            Field('reserved', 'uint16'),
+        ]
+    )
 
 
 def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15000):
-    print(f"Generating {num_edges} complex task dependencies across {num_tasks} tasks...")
+    print(
+        f'Generating {num_edges} complex task dependencies across {num_tasks} tasks...'
+    )
 
     import random
 
@@ -554,7 +576,7 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
                     'priority': random.choice(priorities),
                     'team': random.choice(teams),
                     'complexity': random.choice(complexities),
-                    'base_duration': random.randint(1, 12)
+                    'base_duration': random.randint(1, 12),
                 }
                 total_generated += 1
 
@@ -562,7 +584,9 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
         task_ids = random.sample(task_ids, num_tasks)
 
     task_set = set(task_ids)
-    task_metadata = {tid: task_metadata[tid] for tid in task_set if tid in task_metadata}
+    task_metadata = {
+        tid: task_metadata[tid] for tid in task_set if tid in task_metadata
+    }
     task_ids = list(task_set)
 
     edge_count = 0
@@ -589,7 +613,9 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
             src_meta, tgt_meta = tgt_meta, src_meta
 
         layer_diff = max(1, tgt_meta['layer'] - src_meta['layer'])
-        duration = int(src_meta['base_duration'] * layer_diff * random.uniform(0.8, 1.5))
+        duration = int(
+            src_meta['base_duration'] * layer_diff * random.uniform(0.8, 1.5)
+        )
         duration = max(1, min(65535, duration))
 
         flags = 0
@@ -610,17 +636,17 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
                 flags=flags,
                 team=tgt_meta['team'],
                 complexity=tgt_meta['complexity'],
-                reserved=0
+                reserved=0,
             )
             edge_count += 1
 
             if edge_count % 1000 == 0:
-                print(f"    Generated {edge_count} edges...", flush=True)
+                print(f'    Generated {edge_count} edges...', flush=True)
 
         except (struct.error, ValueError):
             continue
 
-    print(f"\n✅ Generated {edge_count} complex task dependencies")
+    print(f'\n✅ Generated {edge_count} complex task dependencies')
     return task_ids, task_metadata
 
 
@@ -628,41 +654,91 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
 #  Unit Tests
 # ----------------------------------------------------------------------
 
+
 class TestGraphCore(unittest.TestCase):
     def setUp(self):
         self.schema = make_extended_schema()
         self.storage = GraphStorage(self.schema, 'source', 'target')
 
     def test_edge_crud(self):
-        idx = self.storage.add_edge(source=1, target=2, type=1, priority=2,
-                                    duration=5, flags=0, team=1, complexity=1, reserved=0)
+        idx = self.storage.add_edge(
+            source=1,
+            target=2,
+            type=1,
+            priority=2,
+            duration=5,
+            flags=0,
+            team=1,
+            complexity=1,
+            reserved=0,
+        )
         self.assertEqual(self.storage.num_edges, 1)
         edge = self.storage.get_edge(idx)
         self.assertEqual(edge['source'], 1)
         self.assertEqual(edge['target'], 2)
 
         with self.assertRaises(ValueError):
-            self.storage.add_edge(source=70000, target=2, type=1, priority=2,
-                                  duration=5, flags=0, team=1, complexity=1, reserved=0)
+            self.storage.add_edge(
+                source=70000,
+                target=2,
+                type=1,
+                priority=2,
+                duration=5,
+                flags=0,
+                team=1,
+                complexity=1,
+                reserved=0,
+            )
 
     def test_cycle_detection(self):
         # Clear storage and create a simple cycle
         self.storage = GraphStorage(self.schema, 'source', 'target')
 
-        self.storage.add_edge(source=1, target=2, type=1, priority=2,
-                              duration=5, flags=0, team=1, complexity=1, reserved=0)
-        self.storage.add_edge(source=2, target=3, type=1, priority=2,
-                              duration=5, flags=0, team=1, complexity=1, reserved=0)
-        self.storage.add_edge(source=3, target=1, type=1, priority=2,
-                              duration=5, flags=0, team=1, complexity=1, reserved=0)
+        self.storage.add_edge(
+            source=1,
+            target=2,
+            type=1,
+            priority=2,
+            duration=5,
+            flags=0,
+            team=1,
+            complexity=1,
+            reserved=0,
+        )
+        self.storage.add_edge(
+            source=2,
+            target=3,
+            type=1,
+            priority=2,
+            duration=5,
+            flags=0,
+            team=1,
+            complexity=1,
+            reserved=0,
+        )
+        self.storage.add_edge(
+            source=3,
+            target=1,
+            type=1,
+            priority=2,
+            duration=5,
+            flags=0,
+            team=1,
+            complexity=1,
+            reserved=0,
+        )
 
         # Test has_cycle_ultra_fast - FIXED
         has_cycle, count = GraphAlgorithms.has_cycle_ultra_fast(self.storage)
-        self.assertTrue(has_cycle, f"Expected cycle but got has_cycle={has_cycle}, count={count}")
+        self.assertTrue(
+            has_cycle, f'Expected cycle but got has_cycle={has_cycle}, count={count}'
+        )
         self.assertGreater(count, 0)
 
         # Test find_cycles_ultra_fast
-        cycles = GraphAlgorithms.find_cycles_ultra_fast(self.storage, max_cycles=5, force_vertices=[1])
+        cycles = GraphAlgorithms.find_cycles_ultra_fast(
+            self.storage, max_cycles=5, force_vertices=[1]
+        )
         self.assertGreaterEqual(len(cycles), 1)
 
         found = False
@@ -670,89 +746,98 @@ class TestGraphCore(unittest.TestCase):
             if set(cycle) == {1, 2, 3}:
                 found = True
                 break
-        self.assertTrue(found, f"Cycle [1,2,3] not found in {cycles}")
+        self.assertTrue(found, f'Cycle [1,2,3] not found in {cycles}')
 
 
 # ----------------------------------------------------------------------
 #  Ultra-Fast Demo
 # ----------------------------------------------------------------------
 
+
 def ultra_fast_demo():
-    print("=== Graph Core Engine - ULTRA FAST Demo ===\n")
+    print('=== Graph Core Engine - ULTRA FAST Demo ===\n')
 
     schema = make_extended_schema()
     storage = GraphStorage(schema, 'source', 'target')
 
-    print(f"Edge schema: {schema.total_size} bytes per edge")
-    print(f"Fields: {[f.name for f in schema.fields]}\n")
+    print(f'Edge schema: {schema.total_size} bytes per edge')
+    print(f'Fields: {[f.name for f in schema.fields]}\n')
 
     start_gen = time.time()
-    task_ids, metadata = generate_complex_task_graph_ultra_fast(storage, num_tasks=500000, num_edges=1500000)
+    task_ids, metadata = generate_complex_task_graph_ultra_fast(
+        storage, num_tasks=500000, num_edges=1500000
+    )
     gen_time = time.time() - start_gen
 
-    print(f"\n📊 Graph Statistics:")
-    print(f"  Total edges: {storage.num_edges}")
-    print(f"  Storage size: {storage.buffer_size / 1024:.1f} KB")
-    print(f"  Bytes per edge: {storage.buffer_size / max(1, storage.num_edges):.1f}")
-    print(f"  Total vertices: {len(storage.get_vertices())}")
-    print(f"  Generation time: {gen_time:.2f}s")
+    print(f'\n📊 Graph Statistics:')
+    print(f'  Total edges: {storage.num_edges}')
+    print(f'  Storage size: {storage.buffer_size / 1024:.1f} KB')
+    print(f'  Bytes per edge: {storage.buffer_size / max(1, storage.num_edges):.1f}')
+    print(f'  Total vertices: {len(storage.get_vertices())}')
+    print(f'  Generation time: {gen_time:.2f}s')
 
-    print(f"\n🔍 Graph Analysis:")
+    print(f'\n🔍 Graph Analysis:')
 
     start = time.time()
     is_dag = GraphAlgorithms.is_dag(storage)
     dag_time = time.time() - start
-    print(f"  Is DAG: {is_dag} ({dag_time * 1000:.1f} ms)")
+    print(f'  Is DAG: {is_dag} ({dag_time * 1000:.1f} ms)')
 
     start = time.time()
     sccs = GraphAlgorithms.strongly_connected_components(storage)
     scc_time = time.time() - start
-    print(f"  SCCs: {len(sccs)} ({scc_time * 1000:.1f} ms)")
+    print(f'  SCCs: {len(sccs)} ({scc_time * 1000:.1f} ms)')
 
     # FIXED: Now correctly reports cycles
     start = time.time()
     has_cycle, approx_cycles = GraphAlgorithms.has_cycle_ultra_fast(storage)
     cycle_time = time.time() - start
-    print(f"  Has cycle: {has_cycle} ({approx_cycles} cycles detected) ({cycle_time * 1000:.1f} ms)")
+    print(
+        f'  Has cycle: {has_cycle} ({approx_cycles} cycles detected) ({cycle_time * 1000:.1f} ms)'
+    )
 
     if has_cycle:
         start = time.time()
         cycles = GraphAlgorithms.find_cycles_ultra_fast(storage, max_cycles=10)
         sample_time = time.time() - start
-        print(f"  Sample cycles: {len(cycles)} found ({sample_time * 1000:.1f} ms)")
+        print(f'  Sample cycles: {len(cycles)} found ({sample_time * 1000:.1f} ms)')
         if cycles:
             cycle_str = ' → '.join(map(str, cycles[0][:5]))
-            print(f"  First cycle: {cycle_str}... (len={len(cycles[0])})")
+            print(f'  First cycle: {cycle_str}... (len={len(cycles[0])})')
 
-    print(f"\n⚡ Performance Test:")
+    print(f'\n⚡ Performance Test:')
 
     start = time.perf_counter()
     out_edges, in_edges = storage.adjacency_lists_fast()
     adj_time = time.perf_counter() - start
-    print(f"  Fast adjacency: {adj_time * 1000:.3f} ms")
+    print(f'  Fast adjacency: {adj_time * 1000:.3f} ms')
 
     vertices = list(storage.get_vertices())
     if len(vertices) >= 2:
         v1, v2 = random.sample(vertices, 2)
         start = time.perf_counter()
-        dist, path = GraphAlgorithms.shortest_path(storage, v1, v2, weight_field='duration')
+        dist, path = GraphAlgorithms.shortest_path(
+            storage, v1, v2, weight_field='duration'
+        )
         path_time = time.perf_counter() - start
         if dist:
-            print(f"  Shortest path ({v1} → {v2}): {dist:.0f}h, {len(path)} steps, {path_time * 1000:.3f} ms")
+            print(
+                f'  Shortest path ({v1} → {v2}): {dist:.0f}h, {len(path)} steps, {path_time * 1000:.3f} ms'
+            )
 
-    print(f"\n💾 Memory Efficiency:")
+    print(f'\n💾 Memory Efficiency:')
     json_est = storage.num_edges * 200
-    print(f"  JSON: {json_est / 1024:.1f} KB")
-    print(f"  Binary: {storage.buffer_size / 1024:.1f} KB")
-    print(f"  Ratio: {json_est / storage.buffer_size:.1f}x")
+    print(f'  JSON: {json_est / 1024:.1f} KB')
+    print(f'  Binary: {storage.buffer_size / 1024:.1f} KB')
+    print(f'  Ratio: {json_est / storage.buffer_size:.1f}x')
 
     total_time = time.time() - start_gen
-    print(f"\n⏱️  Total demo time: {total_time:.2f}s")
-    print(f"\n{'=' * 60}")
-    print(f"✅ ULTRA FAST Demo complete!")
+    print(f'\n⏱️  Total demo time: {total_time:.2f}s')
+    print(f'\n{"=" * 60}')
+    print(f'✅ ULTRA FAST Demo complete!')
 
 
 if __name__ == '__main__':
     unittest.main(argv=[''], exit=False, verbosity=1)
-    print("\n" + "=" * 60 + "\n")
+    print('\n' + '=' * 60 + '\n')
     ultra_fast_demo()

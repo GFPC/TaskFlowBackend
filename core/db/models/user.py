@@ -1,14 +1,17 @@
-from peewee import *
-from datetime import datetime, timedelta
 import json
 import secrets
-from ...db.base import BaseModel
+from datetime import datetime, timedelta
 
+from peewee import *
+
+from ...db.base import BaseModel
 
 # ------------------- 1. Роли пользователей -------------------
 
+
 class UserRole(BaseModel):
     """Роли пользователей"""
+
     id = AutoField()
     name = CharField(max_length=50, unique=True)
     description = TextField(null=True)
@@ -32,8 +35,10 @@ class UserRole(BaseModel):
 
 # ------------------- 2. Пользователи -------------------
 
+
 class User(BaseModel):
     """Пользователи системы"""
+
     id = AutoField()
 
     # Основная информация
@@ -66,43 +71,42 @@ class User(BaseModel):
 
     # Настройки
     theme_preferences = TextField(null=True)  # JSON
-    notification_settings = TextField(null=True, default='{"telegram": true, "email": false}')  # JSON
+    notification_settings = TextField(
+        null=True, default='{"telegram": true, "email": false}'
+    )  # JSON
 
     class Meta:
         table_name = 'users'
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.username})"
+        return f'{self.first_name} {self.last_name} ({self.username})'
 
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}"
+        return f'{self.first_name} {self.last_name}'
 
     @property
     def theme_preferences_dict(self):
         if self.theme_preferences:
             return json.loads(self.theme_preferences)
-        return {
-            "mode": "light",
-            "primary_color": "#1976d2",
-            "language": "ru"
-        }
+        return {'mode': 'light', 'primary_color': '#1976d2', 'language': 'ru'}
 
     @property
     def notification_settings_dict(self):
         if self.notification_settings:
             return json.loads(self.notification_settings)
         return {
-            "telegram": True,
-            "email": False,
-            "task_assigned": True,
-            "task_completed": True,
-            "dependency_ready": True
+            'telegram': True,
+            'email': False,
+            'task_assigned': True,
+            'task_completed': True,
+            'dependency_ready': True,
         }
 
     def generate_tg_code(self):
         """Генерация 6-значного кода для подтверждения Telegram"""
         import random
+
         code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
         self.tg_code = code
         self.tg_code_expires = datetime.now() + timedelta(minutes=10)
@@ -138,8 +142,10 @@ class User(BaseModel):
 
 # ------------------- 3. Сессии аутентификации -------------------
 
+
 class AuthSession(BaseModel):
     """Сессии аутентификации пользователей"""
+
     id = AutoField()
 
     # Токен и тип
@@ -148,7 +154,9 @@ class AuthSession(BaseModel):
     type = CharField(max_length=50, default='web')  # 'web', 'mobile', 'api'
 
     # Связь с пользователем
-    user = ForeignKeyField(User, backref='auth_sessions', on_delete='CASCADE', index=True)
+    user = ForeignKeyField(
+        User, backref='auth_sessions', on_delete='CASCADE', index=True
+    )
 
     # Информация о клиенте
     ip_address = CharField(max_length=45, null=True)
@@ -171,7 +179,9 @@ class AuthSession(BaseModel):
         table_name = 'auth_sessions'
 
     @classmethod
-    def create_session(cls, user, session_type='web', ip=None, user_agent=None, device_id=None):
+    def create_session(
+        cls, user, session_type='web', ip=None, user_agent=None, device_id=None
+    ):
         """Создание новой сессии"""
         token = secrets.token_urlsafe(32)
         refresh_token = secrets.token_urlsafe(32)
@@ -189,7 +199,7 @@ class AuthSession(BaseModel):
             user_agent=user_agent,
             device_id=device_id,
             expires_at=expires_at,
-            refresh_expires_at=refresh_expires_at
+            refresh_expires_at=refresh_expires_at,
         )
 
     def refresh(self):
@@ -224,10 +234,14 @@ class AuthSession(BaseModel):
 
 # ------------------- 4. Коды восстановления -------------------
 
+
 class RecoveryCode(BaseModel):
     """Коды для восстановления доступа"""
+
     id = AutoField()
-    user = ForeignKeyField(User, backref='recovery_codes', on_delete='CASCADE', index=True)
+    user = ForeignKeyField(
+        User, backref='recovery_codes', on_delete='CASCADE', index=True
+    )
     code = CharField(max_length=255, unique=True, index=True)
 
     created_at = DateTimeField(default=datetime.now)
@@ -244,11 +258,7 @@ class RecoveryCode(BaseModel):
         code = secrets.token_urlsafe(32)
         expires_at = datetime.now() + timedelta(hours=expires_in_hours)
 
-        return cls.create(
-            user=user,
-            code=code,
-            expires_at=expires_at
-        )
+        return cls.create(user=user, code=code, expires_at=expires_at)
 
     def is_valid(self):
         """Проверка валидности кода"""
@@ -267,12 +277,19 @@ class RecoveryCode(BaseModel):
 
 class AuthLog(BaseModel):
     """Логирование всех попыток аутентификации"""
+
     id = AutoField()
 
-    user = ForeignKeyField(User, backref='auth_logs', null=True, on_delete='SET NULL', index=True)
-    username = CharField(max_length=50, null=True)  # Сохраняем даже если пользователь не найден
+    user = ForeignKeyField(
+        User, backref='auth_logs', null=True, on_delete='SET NULL', index=True
+    )
+    username = CharField(
+        max_length=50, null=True
+    )  # Сохраняем даже если пользователь не найден
 
-    action = CharField(max_length=50, index=True)  # 'login', 'logout', 'refresh', 'verify', 'recovery'
+    action = CharField(
+        max_length=50, index=True
+    )  # 'login', 'logout', 'refresh', 'verify', 'recovery'
     status = CharField(max_length=20, index=True)  # 'success', 'failed', 'blocked'
     failure_reason = TextField(null=True)  # Причина неудачи
 
@@ -289,7 +306,16 @@ class AuthLog(BaseModel):
         )
 
     @classmethod
-    def log(cls, action, status, user=None, username=None, ip=None, user_agent=None, reason=None):
+    def log(
+        cls,
+        action,
+        status,
+        user=None,
+        username=None,
+        ip=None,
+        user_agent=None,
+        reason=None,
+    ):
         """Быстрое логирование события"""
         return cls.create(
             user=user,
@@ -298,6 +324,5 @@ class AuthLog(BaseModel):
             status=status,
             failure_reason=reason,
             ip_address=ip,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
-

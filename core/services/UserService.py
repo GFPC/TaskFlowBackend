@@ -36,24 +36,24 @@ class UserService:
     def _validate_username(self, username: str) -> Tuple[bool, Optional[str]]:
         """Валидация имени пользователя"""
         if not username:
-            return False, "Username is required"
+            return False, 'Username is required'
 
         if len(username) < self.USERNAME_MIN_LENGTH:
             return (
                 False,
-                f"Username must be at least {self.USERNAME_MIN_LENGTH} characters",
+                f'Username must be at least {self.USERNAME_MIN_LENGTH} characters',
             )
 
         if len(username) > self.USERNAME_MAX_LENGTH:
             return (
                 False,
-                f"Username must be at most {self.USERNAME_MAX_LENGTH} characters",
+                f'Username must be at most {self.USERNAME_MAX_LENGTH} characters',
             )
 
-        if not re.match("^[a-zA-Z0-9_.-]+$", username):
+        if not re.match('^[a-zA-Z0-9_.-]+$', username):
             return (
                 False,
-                "Username can only contain letters, numbers, underscores, dots and hyphens",
+                'Username can only contain letters, numbers, underscores, dots and hyphens',
             )
 
         return True, None
@@ -61,12 +61,12 @@ class UserService:
     def _validate_password(self, password: str) -> Tuple[bool, Optional[str]]:
         """Валидация пароля"""
         if not password:
-            return False, "Password is required"
+            return False, 'Password is required'
 
         if len(password) < self.PASSWORD_MIN_LENGTH:
             return (
                 False,
-                f"Password must be at least {self.PASSWORD_MIN_LENGTH} characters",
+                f'Password must be at least {self.PASSWORD_MIN_LENGTH} characters',
             )
 
         # Проверка на сложность
@@ -78,7 +78,7 @@ class UserService:
         if not (has_upper and has_lower and has_digit):
             return (
                 False,
-                "Password must contain uppercase, lowercase and digit characters",
+                'Password must contain uppercase, lowercase and digit characters',
             )
 
         return True, None
@@ -88,20 +88,20 @@ class UserService:
         if not email:
             return True, None  # Email не обязателен
 
-        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(pattern, email):
-            return False, "Invalid email format"
+            return False, 'Invalid email format'
 
         return True, None
 
     def _hash_password(self, password: str) -> str:
         """Хеширование пароля"""
         salt = bcrypt.gensalt()
-        return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
     def _verify_password(self, password: str, password_hash: str) -> bool:
         """Проверка пароля"""
-        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
     # ------------------- Роли -------------------
 
@@ -109,16 +109,16 @@ class UserService:
         """Получение роли по умолчанию (Работник)"""
         try:
             role, created = self.role_model.get_or_create(
-                name="Работник",
+                name='Работник',
                 defaults={
-                    "description": "Стандартный пользователь системы",
-                    "priority": 1,
-                    "permissions": json.dumps(
+                    'description': 'Стандартный пользователь системы',
+                    'priority': 1,
+                    'permissions': json.dumps(
                         {
-                            "view_tasks": True,
-                            "view_own_tasks": True,
-                            "update_own_tasks": True,
-                            "add_comments": True,
+                            'view_tasks': True,
+                            'view_own_tasks': True,
+                            'update_own_tasks': True,
+                            'add_comments': True,
                         }
                     ),
                 },
@@ -126,7 +126,7 @@ class UserService:
             return role
         except Exception as e:
             # Если роль уже существует
-            return self.role_model.get(name="Работник")
+            return self.role_model.get(name='Работник')
 
     def get_role_by_name(self, name: str) -> Optional[UserRole]:
         """Получение роли по имени"""
@@ -153,15 +153,15 @@ class UserService:
         # Валидация
         valid, error = self._validate_username(username)
         if not valid:
-            raise ValueError(f"Invalid username: {error}")
+            raise ValueError(f'Invalid username: {error}')
 
         valid, error = self._validate_password(password)
         if not valid:
-            raise ValueError(f"Invalid password: {error}")
+            raise ValueError(f'Invalid password: {error}')
 
         valid, error = self._validate_email(email)
         if not valid:
-            raise ValueError(f"Invalid email: {error}")
+            raise ValueError(f'Invalid email: {error}')
 
         # Проверка уникальности
         if (
@@ -169,13 +169,13 @@ class UserService:
             .where(self.user_model.username == username)
             .exists()
         ):
-            raise ValueError("Username already taken")
+            raise ValueError('Username already taken')
 
         if (
             email
             and self.user_model.select().where(self.user_model.email == email).exists()
         ):
-            raise ValueError("Email already registered")
+            raise ValueError('Email already registered')
 
         if (
             tg_username
@@ -183,7 +183,7 @@ class UserService:
             .where(self.user_model.tg_username == tg_username)
             .exists()
         ):
-            raise ValueError("Telegram username already registered")
+            raise ValueError('Telegram username already registered')
 
         # Получаем роль по умолчанию
         default_role = self.get_default_role()
@@ -203,7 +203,7 @@ class UserService:
             is_active=True,
             is_verified=False,
             theme_preferences=json.dumps(
-                {"mode": "system", "primary_color": "#1976d2", "language": "ru"}
+                {'mode': 'system', 'primary_color': '#1976d2', 'language': 'ru'}
             ),
         )
 
@@ -212,9 +212,9 @@ class UserService:
         user.save()
 
         # Логируем регистрацию
-        self.log_model.log(action="register", status="success", user=user)
+        self.log_model.log(action='register', status='success', user=user)
 
-        return {"user": user, "tg_code": tg_code, "requires_verification": True}
+        return {'user': user, 'tg_code': tg_code, 'requires_verification': True}
 
     # ------------------- Аутентификация -------------------
 
@@ -241,14 +241,14 @@ class UserService:
             if not self._verify_password(password, user.password_hash):
                 # Логируем неудачную попытку
                 self.log_model.log(
-                    action="login",
-                    status="failed",
+                    action='login',
+                    status='failed',
                     username=username,
                     ip=ip,
                     user_agent=user_agent,
-                    reason="Invalid password",
+                    reason='Invalid password',
                 )
-                raise ValueError("Invalid username or password")
+                raise ValueError('Invalid username or password')
 
             # ТЕСТОВЫЙ РЕЖИМ - пропускаем верификацию
             from ..config import settings
@@ -271,16 +271,16 @@ class UserService:
                 user.save()
 
                 return {
-                    "requires_verification": True,
-                    "user_id": user.id,
-                    "tg_code": tg_code,
-                    "session": None,
+                    'requires_verification': True,
+                    'user_id': user.id,
+                    'tg_code': tg_code,
+                    'session': None,
                 }
 
             # Создаем сессию
             session = self.session_model.create_session(
                 user=user,
-                session_type="web",
+                session_type='web',
                 ip=ip,
                 user_agent=user_agent,
                 device_id=device_id,
@@ -293,34 +293,34 @@ class UserService:
 
             # Логируем успешный вход
             self.log_model.log(
-                action="login",
-                status="success",
+                action='login',
+                status='success',
                 user=user,
                 ip=ip,
                 user_agent=user_agent,
             )
 
             return {
-                "requires_verification": False,
-                "user": user,
-                "session": session,
-                "access_token": session.token,
-                "refresh_token": session.refresh_token,
-                "token_type": "bearer",
-                "expires_at": session.expires_at,
+                'requires_verification': False,
+                'user': user,
+                'session': session,
+                'access_token': session.token,
+                'refresh_token': session.refresh_token,
+                'token_type': 'bearer',
+                'expires_at': session.expires_at,
             }
 
         except self.user_model.DoesNotExist:
             # Логируем неудачную попытку
             self.log_model.log(
-                action="login",
-                status="failed",
+                action='login',
+                status='failed',
                 username=username,
                 ip=ip,
                 user_agent=user_agent,
-                reason="User not found",
+                reason='User not found',
             )
-            raise ValueError("Invalid username or password")
+            raise ValueError('Invalid username or password')
 
     def verify_telegram_code(
         self,
@@ -350,27 +350,27 @@ class UserService:
                 session = self.session_model.create_session(user)
 
                 # Логируем верификацию
-                self.log_model.log(action="verify", status="success", user=user)
+                self.log_model.log(action='verify', status='success', user=user)
 
                 return {
-                    "success": True,
-                    "user": user,
-                    "session": session,
-                    "access_token": session.token,
-                    "refresh_token": session.refresh_token,
+                    'success': True,
+                    'user': user,
+                    'session': session,
+                    'access_token': session.token,
+                    'refresh_token': session.refresh_token,
                 }
             else:
                 # Логируем неудачную верификацию
                 self.log_model.log(
-                    action="verify",
-                    status="failed",
+                    action='verify',
+                    status='failed',
                     user=user,
-                    reason="Invalid or expired code",
+                    reason='Invalid or expired code',
                 )
-                raise ValueError("Invalid or expired verification code")
+                raise ValueError('Invalid or expired verification code')
 
         except self.user_model.DoesNotExist:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
     def refresh_session(self, refresh_token: str) -> Dict[str, Any]:
         """
@@ -386,22 +386,22 @@ class UserService:
             # Проверяем валидность refresh токена
             if not session.is_refresh_valid():
                 session.invalidate()
-                raise ValueError("Refresh token expired")
+                raise ValueError('Refresh token expired')
 
             # Обновляем токен
             new_token = session.refresh()
 
             # Логируем обновление
-            self.log_model.log(action="refresh", status="success", user=session.user)
+            self.log_model.log(action='refresh', status='success', user=session.user)
 
             return {
-                "access_token": new_token,
-                "refresh_token": session.refresh_token,
-                "expires_at": session.expires_at,
+                'access_token': new_token,
+                'refresh_token': session.refresh_token,
+                'expires_at': session.expires_at,
             }
 
         except self.session_model.DoesNotExist:
-            raise ValueError("Invalid refresh token")
+            raise ValueError('Invalid refresh token')
 
     def logout(self, token: str) -> bool:
         """
@@ -417,7 +417,7 @@ class UserService:
             session.invalidate()
 
             # Логируем выход
-            self.log_model.log(action="logout", status="success", user=user)
+            self.log_model.log(action='logout', status='success', user=user)
 
             return True
 
@@ -445,7 +445,7 @@ class UserService:
         if count > 0:
             # Логируем завершение всех сессий
             user = self.user_model.get_by_id(user_id)
-            self.log_model.log(action="logout_all", status="success", user=user)
+            self.log_model.log(action='logout_all', status='success', user=user)
 
         return count
 
@@ -467,20 +467,20 @@ class UserService:
             )
 
             # Логируем запрос
-            self.log_model.log(action="recovery", status="success", user=user)
+            self.log_model.log(action='recovery', status='success', user=user)
 
             return {
-                "success": True,
-                "user_id": user.id,
-                "recovery_code": recovery.code,
-                "expires_at": recovery.expires_at,
+                'success': True,
+                'user_id': user.id,
+                'recovery_code': recovery.code,
+                'expires_at': recovery.expires_at,
             }
 
         except self.user_model.DoesNotExist:
             # Не сообщаем, что пользователь не найден
             return {
-                "success": False,
-                "message": "If user exists, recovery code will be sent",
+                'success': False,
+                'message': 'If user exists, recovery code will be sent',
             }
 
     def reset_password(
@@ -493,7 +493,7 @@ class UserService:
             # Валидация нового пароля
             valid, error = self._validate_password(new_password)
             if not valid:
-                raise ValueError(f"Invalid password: {error}")
+                raise ValueError(f'Invalid password: {error}')
 
             # Сначала находим код по строке (даже если использован)
             try:
@@ -501,11 +501,11 @@ class UserService:
                     self.recovery_model.code == recovery_code
                 )
             except self.recovery_model.DoesNotExist:
-                raise ValueError("Invalid recovery code")
+                raise ValueError('Invalid recovery code')
 
             # Проверяем валидность
             if not recovery.is_valid():
-                raise ValueError("Recovery code expired or already used")
+                raise ValueError('Recovery code expired or already used')
 
             user = recovery.user
 
@@ -521,13 +521,13 @@ class UserService:
 
             # Логируем сброс пароля
             self.log_model.log(
-                action="reset_password", status="success", user=user, ip=ip
+                action='reset_password', status='success', user=user, ip=ip
             )
 
-            return {"success": True, "message": "Password successfully reset"}
+            return {'success': True, 'message': 'Password successfully reset'}
 
         except self.recovery_model.DoesNotExist:
-            raise ValueError("Invalid recovery code")
+            raise ValueError('Invalid recovery code')
 
     # ------------------- Управление профилем -------------------
 
@@ -578,7 +578,7 @@ class UserService:
         """
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         # Обновляем поля
         if first_name is not None:
@@ -590,7 +590,7 @@ class UserService:
         if email is not None:
             valid, error = self._validate_email(email)
             if not valid:
-                raise ValueError(f"Invalid email: {error}")
+                raise ValueError(f'Invalid email: {error}')
 
             # Проверяем уникальность
             if email != user.email:
@@ -603,7 +603,7 @@ class UserService:
                     .exists()
                 )
                 if exists:
-                    raise ValueError("Email already registered")
+                    raise ValueError('Email already registered')
                 user.email = email.strip() if email else None
 
         if tg_username is not None:
@@ -618,7 +618,7 @@ class UserService:
                     .exists()
                 )
                 if exists:
-                    raise ValueError("Telegram username already registered")
+                    raise ValueError('Telegram username already registered')
                 user.tg_username = tg_username.strip() if tg_username else None
                 # Сбрасываем верификацию при смене Telegram
                 if tg_username:
@@ -629,7 +629,7 @@ class UserService:
         user.save()
 
         # Логируем обновление
-        self.log_model.log(action="update_profile", status="success", user=user)
+        self.log_model.log(action='update_profile', status='success', user=user)
 
         return user
 
@@ -641,16 +641,16 @@ class UserService:
         """
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         # Проверяем текущий пароль
         if not self._verify_password(current_password, user.password_hash):
-            raise ValueError("Current password is incorrect")
+            raise ValueError('Current password is incorrect')
 
         # Валидация нового пароля
         valid, error = self._validate_password(new_password)
         if not valid:
-            raise ValueError(f"Invalid new password: {error}")
+            raise ValueError(f'Invalid new password: {error}')
 
         # Меняем пароль
         user.password_hash = self._hash_password(new_password)
@@ -660,7 +660,7 @@ class UserService:
         # (текущая сессия будет передана отдельно)
 
         # Логируем смену пароля
-        self.log_model.log(action="change_password", status="success", user=user)
+        self.log_model.log(action='change_password', status='success', user=user)
 
         return True
 
@@ -672,7 +672,7 @@ class UserService:
         """
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         current_theme = user.theme_preferences_dict
         current_theme.update(theme_data)
@@ -690,7 +690,7 @@ class UserService:
         """
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         current_settings = user.notification_settings_dict
         current_settings.update(settings)
@@ -773,12 +773,12 @@ class UserService:
         if not admin_user.is_superuser:
             # Проверяем роль
             admin_role = admin_user.role
-            if admin_role.name not in ["Хозяин", "Менеджер проекта"]:
-                raise PermissionError("Insufficient permissions to change user roles")
+            if admin_role.name not in ['Хозяин', 'Менеджер проекта']:
+                raise PermissionError('Insufficient permissions to change user roles')
 
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         role = self.get_role_by_name(role_name)
         if not role:
@@ -790,10 +790,10 @@ class UserService:
 
         # Логируем изменение
         self.log_model.log(
-            action="change_role",
-            status="success",
+            action='change_role',
+            status='success',
             user=user,
-            reason=f"Role changed to {role_name} by {admin_user.username}",
+            reason=f'Role changed to {role_name} by {admin_user.username}',
         )
 
         return user
@@ -803,11 +803,11 @@ class UserService:
         Деактивация пользователя (только для админов)
         """
         if not admin_user.is_superuser:
-            raise PermissionError("Insufficient permissions to deactivate users")
+            raise PermissionError('Insufficient permissions to deactivate users')
 
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         user.is_active = False
         user.save()
@@ -817,10 +817,10 @@ class UserService:
 
         # Логируем деактивацию
         self.log_model.log(
-            action="deactivate",
-            status="success",
+            action='deactivate',
+            status='success',
             user=user,
-            reason=f"User deactivated by {admin_user.username}",
+            reason=f'User deactivated by {admin_user.username}',
         )
 
         return True
@@ -830,7 +830,7 @@ class UserService:
         Активация пользователя (только для админов)
         """
         if not admin_user.is_superuser:
-            raise PermissionError("Insufficient permissions to activate users")
+            raise PermissionError('Insufficient permissions to activate users')
 
         try:
             user = self.user_model.get(self.user_model.id == user_id)
@@ -839,16 +839,16 @@ class UserService:
 
             # Логируем активацию
             self.log_model.log(
-                action="activate",
-                status="success",
+                action='activate',
+                status='success',
                 user=user,
-                reason=f"User activated by {admin_user.username}",
+                reason=f'User activated by {admin_user.username}',
             )
 
             return True
 
         except self.user_model.DoesNotExist:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
     # ------------------- Поиск и фильтрация -------------------
 
@@ -866,7 +866,7 @@ class UserService:
         conditions = []
 
         if query:
-            search = f"%{query}%"
+            search = f'%{query}%'
             conditions.append(
                 (self.user_model.first_name**search)
                 | (self.user_model.last_name**search)
@@ -916,18 +916,18 @@ class UserService:
             role_stats[role.name] = count
 
         return {
-            "total_users": total,
-            "active_users": active,
-            "inactive_users": total - active,
-            "verified_telegram": verified,
-            "by_role": role_stats,
+            'total_users': total,
+            'active_users': active,
+            'inactive_users': total - active,
+            'verified_telegram': verified,
+            'by_role': role_stats,
         }
 
     async def send_telegram_code(self, user_id: int) -> Optional[str]:
         """Отправка кода верификации в Telegram"""
         user = self.get_user_by_id(user_id)
         if not user:
-            raise ValueError("User not found")
+            raise ValueError('User not found')
 
         if not user.tg_chat_id:
             # Если нет chat_id, возвращаем код для ручного ввода
@@ -975,7 +975,7 @@ class UserService:
                 chat_id=user.tg_chat_id, notification_type=notification_type, data=data
             )
         except Exception as e:
-            logger.error(f"Failed to send Telegram notification: {e}")
+            logger.error(f'Failed to send Telegram notification: {e}')
             return False
 
     def get_user_by_tg_code(self, tg_code: str) -> Optional[User]:
