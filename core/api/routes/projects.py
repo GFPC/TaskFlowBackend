@@ -659,15 +659,19 @@ async def create_invitation(
         )
 
 
-@router.get('/invitations', response_model=List[ProjectInvitationResponse])
+@router.get('/invitations/me', response_model=List[ProjectInvitationResponse])
 async def get_my_invitations(
     current_user: User = Depends(get_current_active_user),
     project_service: ProjectService = Depends(get_project_service),
 ) -> Any:
     """
+
     Получение всех активных приглашений текущего пользователя в проекты
+
     """
+
     invitations = project_service.get_user_invitations(current_user)
+
     return [ProjectInvitationResponse.model_validate(inv) for inv in invitations]
 
 

@@ -548,7 +548,7 @@ async def create_invitation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get('/invitations', response_model=List[TeamInvitationResponse])
+@router.get('/invitations/me', response_model=List[TeamInvitationResponse])
 async def get_my_invitations(
     current_user: User = Depends(get_current_active_user),
     service: TeamService = Depends(get_team_service),
