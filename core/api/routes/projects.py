@@ -408,52 +408,51 @@ async def transfer_ownership(
         )
 
 
-@router.post('/{project_slug}/invitations/{invitation_id}/accept')
+@router.post('/invitations/{invitation_id}/accept')
 async def accept_project_invitation(
-    project_slug: str,  # Добавляем project_slug
     invitation_id: int,
     current_user: User = Depends(get_current_active_user),
     project_service: ProjectService = Depends(get_project_service),
     team_service: TeamService = Depends(get_team_service),
 ) -> Any:
     """
+
     Принятие приглашения в проект
+
     """
+
     logger.info(f'=' * 60)
+
     logger.info(f'ACCEPT PROJECT INVITATION')
+
     logger.info(f'=' * 60)
-    logger.info(f'Project slug: {project_slug}')
+
     logger.info(f'Invitation ID: {invitation_id}')
+
     logger.info(f'User: {current_user.username}')
 
     try:
-        # 1. Находим проект для проверки доступа
-        project = await find_project_by_slug(
-            project_slug,
-            project_service,
-            team_service,
-            current_user,
-            include_archived=True,
-        )
-
-        # 2. Находим приглашение
+        # 1. Находим приглашение
         invitation = project_service.invitation_model.get_by_id(invitation_id)
 
-        # 3. Проверяем, что приглашение принадлежит этому проекту
-        if invitation.project_id != project.id:
+        # 2. Проверяем, что приглашение существует
+
+        if not invitation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail='Invitation not found for this project',
+                detail='Invitation not found',
             )
 
-        # 4. Проверяем, что приглашение адресовано этому пользователю
+        # 3. Проверяем, что приглашение адресовано этому пользователю
+
         if invitation.invited_user.id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail='This invitation was sent to another user',
             )
 
-        # 5. Принимаем приглашение
+        # 4. Принимаем приглашение
+
         result = project_service.accept_invitation(invitation, current_user)
 
         return {
@@ -461,70 +460,76 @@ async def accept_project_invitation(
             'project': ProjectResponse.model_validate(result['project']),
             'member': ProjectMemberResponse.model_validate(result['member']),
         }
+
     except HTTPException:
         raise
+
     except Exception as e:
         logger.error(f'Error accepting invitation: {e}', exc_info=True)
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
-@router.post('/{project_slug}/invitations/{invitation_id}/decline')
+@router.post('/invitations/{invitation_id}/decline')
 async def decline_project_invitation(
-    project_slug: str,  # Добавляем project_slug
     invitation_id: int,
     current_user: User = Depends(get_current_active_user),
     project_service: ProjectService = Depends(get_project_service),
     team_service: TeamService = Depends(get_team_service),
 ) -> Any:
     """
+
     Отклонение приглашения в проект
+
     """
+
     logger.info(f'=' * 60)
+
     logger.info(f'DECLINE PROJECT INVITATION')
+
     logger.info(f'=' * 60)
-    logger.info(f'Project slug: {project_slug}')
+
     logger.info(f'Invitation ID: {invitation_id}')
+
     logger.info(f'User: {current_user.username}')
 
     try:
-        # 1. Находим проект
-        project = await find_project_by_slug(
-            project_slug,
-            project_service,
-            team_service,
-            current_user,
-            include_archived=True,
-        )
-
-        # 2. Находим приглашение
+        # 1. Находим приглашение
         invitation = project_service.invitation_model.get_by_id(invitation_id)
 
-        # 3. Проверяем, что приглашение принадлежит этому проекту
-        if invitation.project_id != project.id:
+        # 2. Проверяем, что приглашение существует
+        if not invitation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail='Invitation not found for this project',
+                detail='Invitation not found',
             )
 
-        # 4. Проверяем, что приглашение адресовано этому пользователю
+        # 3. Проверяем, что приглашение адресовано этому пользователю
+
         if invitation.invited_user.id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail='You cannot decline this invitation',
             )
 
-        # 5. Отклоняем приглашение
+        # 4. Отклоняем приглашение
+
         invitation.status = 'declined'
+
         invitation.responded_at = datetime.now()
+
         invitation.save()
 
         return {'message': 'Invitation declined successfully'}
+
     except HTTPException:
         raise
+
     except Exception as e:
         logger.error(f'Error declining invitation: {e}', exc_info=True)
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -652,6 +657,18 @@ async def create_invitation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+
+@router.get('/invitations', response_model=List[ProjectInvitationResponse])
+async def get_my_invitations(
+    current_user: User = Depends(get_current_active_user),
+    project_service: ProjectService = Depends(get_project_service),
+) -> Any:
+    """
+    Получение всех активных приглашений текущего пользователя в проекты
+    """
+    invitations = project_service.get_user_invitations(current_user)
+    return [ProjectInvitationResponse.model_validate(inv) for inv in invitations]
 
 
 @router.get('/{project_slug}/stats', response_model=ProjectStatsResponse)

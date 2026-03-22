@@ -450,6 +450,22 @@ class ProjectService:
 
         return projects
 
+    def get_user_invitations(self, user: User) -> List[ProjectInvitation]:
+        """
+
+        Получение активных приглашений пользователя в проекты
+
+        """
+
+        return list(
+            self.invitation_model.select()
+            .where(
+                (self.invitation_model.invited_user == user)
+                & (self.invitation_model.status == 'pending')
+            )
+            .order_by(self.invitation_model.created_at.desc())
+        )
+
     def get_project_members(
         self, project: Project, include_inactive: bool = False
     ) -> List[ProjectMember]:
