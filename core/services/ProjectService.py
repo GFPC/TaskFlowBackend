@@ -100,33 +100,52 @@ class ProjectService:
         initial_graph_data: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
+
         Создание нового проекта в команде
+
         """
+
         # Проверяем права на создание проекта в команде
+
         from .TeamService import TeamService
 
         team_service = TeamService()
+
         if not team_service.can_manage_projects(created_by, team):
             raise PermissionError(
                 "You don't have permission to create projects in this team"
             )
 
         # Валидация
+
         valid, error = self._validate_project_name(name)
+
         if not valid:
             raise ValueError(f'Invalid project name: {error}')
 
         # Генерация slug
+
         base_slug = self._generate_slug(name)
+
         slug = self._get_unique_slug(base_slug, team.id)
 
         # Получаем роль владельца проекта
+
         owner_role = self.get_role_by_name('owner')
+
         if not owner_role:
             roles = self.ensure_default_roles()
+
             owner_role = roles['owner']
 
+        # Получаем роль разработчика по умолчанию для остальных участников команды
+        developer_role = self.get_role_by_name('developer')
+        if not developer_role:
+            roles = self.ensure_default_roles()
+            developer_role = roles['developer']
+
         # Создаем проект
+
         project = self.project_model.create(
             name=name.strip(),
             slug=slug,
@@ -143,7 +162,15 @@ class ProjectService:
             ),
         )
 
+        # Получаем всех активных участников команды
+        from .team import TeamMember
+
+        team_members = TeamMember.select().where(
+            (TeamMember.team == team) & (TeamMember.is_active == True)
+        )
+
         # Добавляем создателя как владельца проекта
+
         member = self.member_model.create(
             project=project,
             user=created_by,
@@ -152,9 +179,23 @@ class ProjectService:
             is_active=True,
         )
 
+        # Добавляем остальных участников команды в проект с ролью developer
+        added_count = 1  # Уже добавили создателя
+        for team_member in team_members:
+            if team_member.user.id != created_by.id:  # Не добавляем создателя повторно
+                self.member_model.create(
+                    project=project,
+                    user=team_member.user,
+                    role=developer_role,
+                    created_by=created_by,
+                    is_active=True,
+                )
+                added_count += 1
+
         # Обновляем счетчики
-        project.members_count = 1
+        project.members_count = added_count
         project.tasks_count = 0
+
         project.save()
 
         return {'project': project, 'member': member}

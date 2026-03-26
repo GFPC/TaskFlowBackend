@@ -53,10 +53,14 @@ async def get_project_by_slug(
     for team in user_teams:
         project = project_service.get_project_by_slug(project_slug, team)
         if project:
-            if not project_service.is_member(current_user, project):
+            # Check if user is a member of the project OR the team that owns the project
+            is_project_member = project_service.is_member(current_user, project)
+            is_team_member = team_service.is_member(current_user, team)
+
+            if not (is_project_member or is_team_member):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail='You are not a member of this project',
+                    detail='You are not a member of this project or its team',
                 )
             return project
 

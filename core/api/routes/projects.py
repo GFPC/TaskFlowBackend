@@ -222,10 +222,16 @@ async def get_project_members(
             project_slug, project_service, team_service, current_user
         )
 
-        if not project_service.is_member(current_user, project):
+        # Check if user is a member of the project OR the team that owns the project
+        is_project_member = project_service.is_member(current_user, project)
+
+        team = team_service.get_team_by_id(project.team_id)
+        is_team_member = team and team_service.is_member(current_user, team)
+
+        if not (is_project_member or is_team_member):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail='You are not a member of this project',
+                detail='You are not a member of this project or its team',
             )
 
         members = project_service.get_project_members(project, include_inactive)
@@ -692,10 +698,16 @@ async def get_project_stats(
             project_slug, project_service, team_service, current_user
         )
 
-        if not project_service.is_member(current_user, project):
+        # Check if user is a member of the project OR the team that owns the project
+        is_project_member = project_service.is_member(current_user, project)
+
+        team = team_service.get_team_by_id(project.team_id)
+        is_team_member = team and team_service.is_member(current_user, team)
+
+        if not (is_project_member or is_team_member):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail='You are not a member of this project',
+                detail='You are not a member of this project or its team',
             )
 
         stats = project_service.get_project_stats(project)
@@ -799,10 +811,17 @@ async def get_project_by_slug(
             include_archived=True,
         )
 
-        if not project_service.is_member(current_user, project):
+        # Check if user is a member of the project OR the team that owns the project
+
+        is_project_member = project_service.is_member(current_user, project)
+
+        team = team_service.get_team_by_id(project.team_id)
+        is_team_member = team and team_service.is_member(current_user, team)
+
+        if not (is_project_member or is_team_member):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail='You are not a member of this project',
+                detail='You are not a member of this project or its team',
             )
 
         members = project_service.get_project_members(project)
