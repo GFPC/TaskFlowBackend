@@ -12,7 +12,8 @@ IS_TESTING = os.environ.get('TESTING') == '1'
 
 # Настройки БД
 if IS_TESTING:
-    # database = SqliteDatabase(':memory:')
+    database = SqliteDatabase(':memory:')
+elif os.environ.get('USE_SQLITE') == '1':
     database = SqliteDatabase('taskflow.db')
 else:
     try:
@@ -20,8 +21,7 @@ else:
 
         pymysql.install_as_MySQLdb()
     except ImportError:
-        pass
-
+        print('Failed to import pymysql!!!!!!!!!!!!!')
     database = MySQLDatabase(
         'taskflow',
         user=os.getenv('DB_USER', 'root'),
