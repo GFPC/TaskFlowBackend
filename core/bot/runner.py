@@ -18,12 +18,11 @@ logging.basicConfig(
 
 
 async def main():
-    """Запуск бота"""
     bot = TaskFlowBot()
     try:
-        await bot.run_polling()
+        await bot.start_polling()  # было run_polling
     except KeyboardInterrupt:
-        bot.stop()
+        await bot.stop_polling()  # было bot.stop()
         print('\n👋 Бот остановлен')
 
 

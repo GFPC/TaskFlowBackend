@@ -20,6 +20,7 @@ cwd = os.path.dirname(os.path.dirname(__file__)) or os.getcwd()
 file_list = list_files('core', ('py',), True) + list_files('.', ('py',))
 
 out = open('joined.txt', 'w', encoding='utf-8')
+out.write('TaskFlowBackend:\n')
 for fp in file_list:
     out.write(fp + '\n')
     out.write(open(fp, 'r', encoding='utf-8').read() + '\n')
