@@ -479,17 +479,30 @@ class ProjectService:
         self, user: User, include_archived: bool = False
     ) -> List[Project]:
         """
-        Получение всех проектов пользователя
+        Получение всех проектов пользователя (личные + из команд)
         """
-        query = self.member_model.select().where(
+        # 1. Получаем проекты, где пользователь прямой участник
+        direct_projects_query = self.member_model.select().where(
             (self.member_model.user == user) & (self.member_model.is_active == True)
         )
-
         projects = []
-        for member in query:
+        project_ids = set()
+        for member in direct_projects_query:
             if include_archived or member.project.status == 'active':
                 projects.append(member.project)
-
+                project_ids.add(member.project.id)
+        # 2. Получаем все команды, где пользователь является участником
+        team_members = TeamMember.select().where(
+            (TeamMember.user == user) & (TeamMember.is_active == True)
+        )
+        # 3. Для каждой команды получаем проекты (учитывая статус)
+        for team_member in team_members:
+            team = team_member.team
+            for project in team.projects:
+                if project.id not in project_ids:
+                    if include_archived or project.status == 'active':
+                        projects.append(project)
+                        project_ids.add(project.id)
         return projects
 
     def get_user_invitations(self, user: User) -> List[ProjectInvitation]:
