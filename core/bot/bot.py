@@ -270,3 +270,17 @@ class TaskFlowBot:
         logger.info('🤖 Stopping Telegram bot...')
         await self.dp.stop_polling()
         await self.bot.session.close()
+
+    async def send_verification_code(self, chat_id: int, code: str) -> bool:
+        """Отправка 6-значного кода верификации пользователю."""
+        try:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=f'🔐 Ваш код подтверждения: <code>{code}</code>\n\n'
+                f'Введите этот код в приложении для привязки Telegram.',
+                parse_mode='HTML',
+            )
+            return True
+        except Exception as e:
+            logger.error(f'Failed to send verification code to {chat_id}: {e}')
+            return False
