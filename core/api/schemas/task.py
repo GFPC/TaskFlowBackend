@@ -154,7 +154,7 @@ class TaskStatusUpdate(BaseModel):
 class TaskDependencyBase(BaseModel):
     """Базовая схема зависимости"""
 
-    source_task_id: int
+    source_task_id: Optional[int] = None
     target_task_id: int
     dependency_type: str = 'simple'
     description: Optional[str] = None
