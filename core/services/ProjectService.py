@@ -163,7 +163,8 @@ class ProjectService:
         )
 
         # Получаем всех активных участников команды
-        from .team import TeamMember
+
+        from ..db.models.team import TeamMember
 
         team_members = TeamMember.select().where(
             (TeamMember.team == team) & (TeamMember.is_active == True)
