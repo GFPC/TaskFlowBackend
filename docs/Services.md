@@ -73,40 +73,31 @@
 
 ### 🔥 КРИТИЧЕСКИЕ МОМЕНТЫ (ОПЫТ)
 
-#### ⚠️ ПРОБЛЕМА 1: Telegram верификация в тестах
-**Симптомы:** Тесты падали с 401, хотя регистрация проходила успешно
-**Причина:** `user.tg_verified = False` по умолчанию
-**Решение:** 
-```python
-# Добавить DEBUG режим
-if settings.DEBUG:
-    user.tg_verified = True  # Авто-верификация для тестов
-    user.tg_id = user.id + 1000000  # Уникальный ID!
-```
+#### ⚠️ ПРОБЛЕМА 1: Email не подтверждён — нет сессии после логина
+**Симптомы:** После `login` приходит `requires_verification`, а не токены.
+**Причина:** `user.email_verified == False` — нужен код из письма.
+**Решение:** Фронт показывает ввод 6-значного кода и вызывает `verify_email_code` (`POST /auth/verify-email`). В `DEBUG` на бэкенде возможна авто-верификация только для разработки.
 
-#### ⚠️ ПРОБЛЕМА 2: Дубликат tg_id
-**Симптомы:** IntegrityError: Duplicate entry '123456789' for key 'users.user_tg_id'
-**Причина:** Все тестовые пользователи получали один tg_id
-**Решение:** 
-```python
-user.tg_id = 1000000 + user.id  # Уникальный для каждого!
-```
+#### ⚠️ ПРОБЛЕМА 2: Письма не уходят
+**Симптомы:** `email_sent: false`, код может прийти в ответе API (режим отладки).
+**Причина:** не задан `RESEND_API_KEY` или не настроен SMTP (`SMTP_HOST`, пароль `EMAIL_PASSWORD` / `SMTP_PASSWORD`).
+**Решение:** см. `core/config.py` и переменные окружения в [First.md](./First.md).
 
 ### ✅ КЛЮЧЕВЫЕ МЕТОДЫ
 ```python
 # Регистрация и вход
-register()     # → возвращает tg_code для верификации
-login()        # → проверяет tg_verified, создает сессию
-verify_telegram_code()  # → верифицирует и создает сессию
+register()            # → создаёт пользователя, шлёт OTP на email
+login()               # → если email не подтверждён, шлёт новый OTP
+verify_email_code()   # → подтверждает email и создаёт сессию
 
 # Сессии
-validate_token()  # → проверяет токен, возвращает User
-refresh_session() # → обновляет access token
-logout_all()      # → завершает все сессии
+validate_token()
+refresh_session()
+logout_all()
 
 # Восстановление
-initiate_password_recovery()  # → создает код
-reset_password()              # → сбрасывает пароль
+initiate_password_recovery()  # → код на email + RecoveryCode в БД
+reset_password()              # → сброс по коду
 ```
 
 ---
@@ -438,10 +429,10 @@ class Task(BaseModel):
 
 ```python
 class User(BaseModel):
-    # Telegram поля должны быть NULLABLE!
-    tg_id = BigIntegerField(null=True, unique=True, index=True)
-    tg_chat_id = BigIntegerField(null=True)
-    tg_verified = BooleanField(default=False)
+    email = CharField(null=True)
+    email_verified = BooleanField(default=False)
+    email_code = CharField(null=True)
+    # ... сроки и попытки кода — см. модель
     
     @property
     def theme_preferences_dict(self):
@@ -663,7 +654,7 @@ def setup_method(self):
 | 1 | **Порядок роутов** | 404 для специальных эндпоинтов | Специальные ДО общих |
 | 2 | **.refresh()** | AttributeError | `obj = Model.get_by_id(obj.id)` |
 | 3 | **Составной ключ** | over-determined primary key | Использовать indexes, НЕ CompositeKey |
-| 4 | **tg_id дубликат** | IntegrityError | Уникальный ID: `1000000 + user.id` |
+| 4 | **Дубликат email** | IntegrityError | Проверка уникальности до INSERT |
 | 5 | **Права developer** | 200 вместо 403 | Добавить проверку в эндпоинт |
 | 6 | **URL зависимостей** | 404 Not Found | `/tasks/dependencies/` а не `/dependencies/` |
 | 7 | **Архивация проекта** | Проект исчезает | Менять статус, НЕ удалять |

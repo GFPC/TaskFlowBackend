@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ...db.models.project import Project
+from ...db.models.task import Task
 from ...db.models.user import User
 from ...services.ProjectService import ProjectService
 from ...services.TaskService import TaskService
@@ -18,9 +19,8 @@ from ..deps import (
     get_team_service,
     get_user_service,
 )
+from ..schemas.project import ProjectGraphData
 from ..schemas.task import (
-    DependencyActionCreate,
-    DependencyActionResponse,
     ProjectGraphResponse,
     TaskCreate,
     TaskDependencyCreate,
@@ -88,6 +88,53 @@ async def get_project_graph(
     )
     graph_data = task_service.get_project_graph(project)
     return graph_data
+
+
+@router.put('/graph')
+async def save_project_graph(
+    project_slug: str,
+    graph_data: ProjectGraphData,
+    current_user: User = Depends(get_current_active_user),
+    task_service: TaskService = Depends(get_task_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+) -> Any:
+    """Сохранение графа (автосохранение React Flow): узлы, рёбра, viewport."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        is_project_member = project_service.is_member(current_user, project)
+        team = team_service.get_team_by_id(project.team_id)
+        is_team_member = team and team_service.is_member(current_user, team)
+        if not (is_project_member or is_team_member):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail='You are not a member of this project or its team',
+            )
+        graph_dict = graph_data.model_dump(exclude_none=True)
+        nodes = graph_dict.get('nodes', [])
+        for node in nodes:
+            task_id = node.get('id')
+            position = node.get('position', {})
+            if task_id and isinstance(task_id, (int, str)):
+                try:
+                    task = Task.get_by_id(int(task_id))
+                    if task.project_id == project.id:
+                        task.position_x = position.get('x', task.position_x)
+                        task.position_y = position.get('y', task.position_y)
+                        task.save()
+                except (Task.DoesNotExist, ValueError):
+                    logger.warning('Task %s not found or invalid', task_id)
+        project_service.save_graph_data(project, graph_dict, current_user)
+        return {'message': 'Graph saved successfully'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error('Error saving project graph: %s', e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @router.get('/stats', response_model=TaskStatsResponse)
@@ -166,101 +213,6 @@ async def delete_dependency(
     except task_service.dependency_model.DoesNotExist:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail='Dependency not found'
-        )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-
-
-@router.post(
-    '/dependencies/{dependency_id}/actions', response_model=DependencyActionResponse
-)
-async def add_dependency_action(
-    project_slug: str,
-    dependency_id: int,
-    action_in: DependencyActionCreate,
-    current_user: User = Depends(get_current_active_user),
-    task_service: TaskService = Depends(get_task_service),
-    project_service: ProjectService = Depends(get_project_service),
-    team_service: TeamService = Depends(get_team_service),
-    user_service: UserService = Depends(get_user_service),
-) -> Any:
-    """Добавление действия к зависимости"""
-    logger.info(f'Adding action to dependency {dependency_id}')
-
-    try:
-        project = await get_project_by_slug(
-            project_slug, project_service, team_service, current_user
-        )
-        dependency = task_service.dependency_model.get_by_id(dependency_id)
-
-        if dependency.project_id != project.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail='Dependency not found in this project',
-            )
-
-        target_user = None
-        if action_in.target_user_username:
-            target_user = user_service.get_user_by_username(
-                action_in.target_user_username
-            )
-            if not target_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"User '{action_in.target_user_username}' not found",
-                )
-
-        action = task_service.add_dependency_action(
-            dependency=dependency,
-            action_type_code=action_in.action_type_code,
-            created_by=current_user,
-            target_user=target_user,
-            target_status_name=action_in.target_status,
-            message_template=action_in.message_template,
-            delay_minutes=action_in.delay_minutes,
-            execute_order=action_in.execute_order,
-        )
-
-        return DependencyActionResponse.model_validate(action)
-    except task_service.dependency_model.DoesNotExist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail='Dependency not found'
-        )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-
-@router.delete('/dependencies/actions/{action_id}')
-async def remove_dependency_action(
-    project_slug: str,
-    action_id: int,
-    current_user: User = Depends(get_current_active_user),
-    task_service: TaskService = Depends(get_task_service),
-    project_service: ProjectService = Depends(get_project_service),
-    team_service: TeamService = Depends(get_team_service),
-) -> Any:
-    """Удаление действия с зависимости"""
-    logger.info(f'Removing action {action_id}')
-
-    try:
-        project = await get_project_by_slug(
-            project_slug, project_service, team_service, current_user
-        )
-        action = task_service.action_model.get_by_id(action_id)
-
-        if action.dependency.project_id != project.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail='Action not found in this project',
-            )
-
-        task_service.remove_dependency_action(action, current_user)
-        return {'message': 'Action successfully removed'}
-    except task_service.action_model.DoesNotExist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail='Action not found'
         )
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -581,7 +533,6 @@ async def change_task_status(
             'status_changed': result['status_changed'],
             'old_status': result['old_status'].name,
             'new_status': result['new_status'].name,
-            'actions_executed': result.get('actions_executed', []),
         }
 
     except PermissionError as e:

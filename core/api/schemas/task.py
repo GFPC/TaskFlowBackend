@@ -22,23 +22,6 @@ class TaskStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ------------------- ТИПЫ ДЕЙСТВИЙ -------------------
-
-
-class DependencyActionTypeResponse(BaseModel):
-    """Схема типа действия на зависимости"""
-
-    id: int
-    name: str
-    code: str
-    description: Optional[str] = None
-    requires_target_user: bool
-    requires_template: bool
-    supports_delay: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ------------------- ЗАДАЧИ -------------------
 
 
@@ -179,7 +162,6 @@ class TaskDependencyResponse(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     created_by_username: str
-    actions: List['DependencyActionResponse'] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -201,63 +183,6 @@ class TaskDependencyResponse(BaseModel):
                 'created_by_username': data.created_by.username
                 if data.created_by
                 else None,
-                'actions': [],
-            }
-        return data
-
-
-# ------------------- ДЕЙСТВИЯ НА ЗАВИСИМОСТЯХ -------------------
-
-
-class DependencyActionCreate(BaseModel):
-    """Создание действия на зависимости"""
-
-    action_type_code: str
-    target_user_username: Optional[str] = None
-    target_status: Optional[str] = None
-    message_template: Optional[str] = None
-    delay_minutes: int = 0
-    execute_order: int = 0
-
-
-class DependencyActionResponse(BaseModel):
-    """Ответ с информацией о действии"""
-
-    id: int
-    dependency_id: int
-    action_type_code: str
-    action_type_name: str
-    target_user_id: Optional[int] = None
-    target_user_username: Optional[str] = None
-    target_status: Optional[str] = None
-    message_template: Optional[str] = None
-    delay_minutes: int
-    execute_order: int
-    is_active: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @model_validator(mode='before')
-    @classmethod
-    def validate_action(cls, data):
-        """Преобразует объект DependencyAction в словарь"""
-        if hasattr(data, '__dict__'):
-            return {
-                'id': data.id,
-                'dependency_id': data.dependency_id,
-                'action_type_code': data.action_type.code if data.action_type else None,
-                'action_type_name': data.action_type.name if data.action_type else None,
-                'target_user_id': data.target_user.id if data.target_user else None,
-                'target_user_username': data.target_user.username
-                if data.target_user
-                else None,
-                'target_status': data.target_status.name
-                if data.target_status
-                else None,
-                'message_template': data.message_template,
-                'delay_minutes': data.delay_minutes,
-                'execute_order': data.execute_order,
-                'is_active': data.is_active,
             }
         return data
 

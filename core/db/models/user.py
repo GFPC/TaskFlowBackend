@@ -48,14 +48,10 @@ class User(BaseModel):
     password_hash = CharField(max_length=255)
     email = CharField(max_length=255, null=True, unique=True, index=True)
 
-    # Telegram данные
-    tg_username = CharField(max_length=100, null=True, index=True)
-    tg_id = BigIntegerField(null=True, unique=True, index=True)
-    tg_chat_id = BigIntegerField(null=True)  # ID чата для отправки сообщений
-    tg_code = CharField(max_length=6, null=True)
-    tg_code_expires = DateTimeField(null=True)
-    tg_code_attempts = IntegerField(default=0)  # Количество попыток ввода кода
-    tg_verified = BooleanField(default=False)  # Подтвержден ли Telegram
+    email_verified = BooleanField(default=False, index=True)
+    email_code = CharField(max_length=6, null=True)
+    email_code_expires = DateTimeField(null=True)
+    email_code_attempts = IntegerField(default=0)
 
     # Роль и статус
     role = ForeignKeyField(UserRole, backref='users', on_delete='RESTRICT')
@@ -72,7 +68,7 @@ class User(BaseModel):
     # Настройки
     theme_preferences = TextField(null=True)  # JSON
     notification_settings = TextField(
-        null=True, default='{"telegram": true, "email": false}'
+        null=True, default='{"email": true}'
     )  # JSON
 
     class Meta:
@@ -96,41 +92,40 @@ class User(BaseModel):
         if self.notification_settings:
             return json.loads(self.notification_settings)
         return {
-            'telegram': True,
-            'email': False,
+            'email': True,
             'task_assigned': True,
             'task_completed': True,
             'dependency_ready': True,
         }
 
-    def generate_tg_code(self):
-        """Генерация 6-значного кода для подтверждения Telegram"""
+    def generate_email_code(self, expiry_minutes: int = 10):
+        """Генерация 6-значного кода для подтверждения email"""
         import random
 
         code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-        self.tg_code = code
-        self.tg_code_expires = datetime.now() + timedelta(minutes=10)
-        self.tg_code_attempts = 0
+        self.email_code = code
+        self.email_code_expires = datetime.now() + timedelta(minutes=expiry_minutes)
+        self.email_code_attempts = 0
         return code
 
-    def verify_tg_code(self, code):
-        """Проверка введенного кода"""
-        if not self.tg_code or not self.tg_code_expires:
+    def verify_email_code(self, code: str) -> bool:
+        """Проверка кода из письма"""
+        if not self.email_code or not self.email_code_expires:
             return False
 
-        if datetime.now() > self.tg_code_expires:
+        if datetime.now() > self.email_code_expires:
             return False
 
-        if self.tg_code_attempts >= 5:  # Максимум 5 попыток
+        if self.email_code_attempts >= 5:
             return False
 
-        self.tg_code_attempts += 1
+        self.email_code_attempts += 1
 
-        if self.tg_code == code:
-            self.tg_verified = True
-            self.tg_code = None
-            self.tg_code_expires = None
-            self.tg_code_attempts = 0
+        if self.email_code == code:
+            self.email_verified = True
+            self.email_code = None
+            self.email_code_expires = None
+            self.email_code_attempts = 0
             return True
 
         return False

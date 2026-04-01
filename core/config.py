@@ -50,9 +50,25 @@ class Settings:
     # Frontend
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
-    # Telegram Bot
-    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'taskflow_bot')
+    # Email: Resend (HTTPS API) или SMTP (например Timeweb: smtp.timeweb.ru:2525 + STARTTLS)
+    RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+    EMAIL_FROM = os.getenv('EMAIL_FROM', 'onboarding@resend.dev')
+    # Пароль ящика: SMTP_PASSWORD или EMAIL_PASSWORD (для совместимости с .env)
+    _smtp_pw = os.getenv('SMTP_PASSWORD', '')
+    _email_pw = os.getenv('EMAIL_PASSWORD', '')
+    SMTP_PASSWORD = _smtp_pw or _email_pw
+    # Пустой хост = SMTP не используется (задайте в .env, например smtp.timeweb.ru)
+    SMTP_HOST = os.getenv('SMTP_HOST', '')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', '2525'))
+    SMTP_USER = os.getenv('SMTP_USER', '')
+    _smtp_starttls = (
+        os.getenv('SMTP_USE_STARTTLS', os.getenv('SMTP_USE_TLS', 'true')).lower()
+        == 'true'
+    )
+    SMTP_USE_STARTTLS = _smtp_starttls
+    SMTP_USE_TLS = _smtp_starttls  # устаревший алиас
+    SMTP_USE_SSL = os.getenv('SMTP_USE_SSL', 'false').lower() == 'true'
+    EMAIL_CODE_EXPIRY_MINUTES = int(os.getenv('EMAIL_CODE_EXPIRY_MINUTES', '10'))
 
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')

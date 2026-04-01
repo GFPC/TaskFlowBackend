@@ -43,7 +43,6 @@ async def update_current_user_profile(
             first_name=user_in.first_name,
             last_name=user_in.last_name,
             email=user_in.email,
-            tg_username=user_in.tg_username,
         )
 
         return UserProfileResponse.model_validate(updated_user)

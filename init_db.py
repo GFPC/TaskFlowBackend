@@ -487,13 +487,12 @@ def create_initial_admin():
             role=owner_role,
             is_active=True,
             is_superuser=True,
-            tg_verified=False,
+            email_verified=True,
             theme_preferences=json.dumps(
                 {'mode': 'dark', 'primary_color': '#1976d2', 'language': 'ru'}
             ),
             notification_settings=json.dumps(
                 {
-                    'telegram': False,
                     'email': True,
                     'task_assigned': True,
                     'task_completed': True,

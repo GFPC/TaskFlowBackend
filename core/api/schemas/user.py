@@ -13,7 +13,6 @@ class UserBase(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=100)
     username: str = Field(..., min_length=3, max_length=50)
     email: Optional[EmailStr] = None
-    tg_username: Optional[str] = None
 
     @validator('username')
     def validate_username(cls, v):
@@ -27,6 +26,7 @@ class UserBase(BaseModel):
 # ---------- Регистрация и авторизация ----------
 class UserRegister(UserBase):
     password: str = Field(..., min_length=8)
+    email: EmailStr
 
     @validator('password')
     def validate_password(cls, v):
@@ -44,11 +44,9 @@ class UserLogin(BaseModel):
     password: str
 
 
-class TelegramVerify(BaseModel):
+class EmailVerify(BaseModel):
     user_id: int
     code: str = Field(..., min_length=6, max_length=6)
-    tg_id: Optional[int] = None
-    tg_chat_id: Optional[int] = None
 
 
 class RefreshToken(BaseModel):
@@ -61,8 +59,7 @@ class UserResponse(UserBase):
     role_id: int
     role_name: str
     is_active: bool
-    is_verified: bool
-    tg_verified: bool
+    email_verified: bool
     created_at: datetime
     last_login: Optional[datetime]
     theme_preferences: Dict[str, Any]
@@ -79,8 +76,7 @@ class UserProfileResponse(BaseModel):
     last_name: str
     username: str
     email: Optional[str] = None
-    tg_username: Optional[str] = None
-    tg_verified: bool
+    email_verified: bool
     role: str
     is_active: bool
     is_superuser: bool = False
@@ -103,8 +99,7 @@ class UserProfileResponse(BaseModel):
                 'last_name': data.last_name,
                 'username': data.username,
                 'email': data.email,
-                'tg_username': data.tg_username,
-                'tg_verified': data.tg_verified,
+                'email_verified': data.email_verified,
                 'role': data.role.name if data.role else None,
                 'is_active': data.is_active,
                 'is_superuser': data.is_superuser,
@@ -131,11 +126,12 @@ class AuthResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TelegramCodeResponse(BaseModel):
+class EmailCodeResponse(BaseModel):
     requires_verification: bool = True
     user_id: int
-    tg_code: str
-    message: str = 'Verification code sent to Telegram'
+    message: str = 'Verification code sent to your email'
+    verification_code: Optional[str] = None
+    email_sent: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -143,7 +139,8 @@ class TelegramCodeResponse(BaseModel):
 class LoginResponse(BaseModel):
     requires_verification: bool
     user_id: Optional[int] = None
-    tg_code: Optional[str] = None
+    verification_code: Optional[str] = None
+    email_sent: Optional[bool] = None
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
     user: Optional[UserProfileResponse] = None
@@ -174,6 +171,7 @@ class RecoveryInitiateResponse(BaseModel):
     user_id: Optional[int] = None
     recovery_code: Optional[str] = None
     expires_at: Optional[datetime] = None
+    email_sent: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -190,7 +188,6 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
-    tg_username: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -221,8 +218,7 @@ class ThemePreferences(BaseModel):
 
 
 class NotificationSettings(BaseModel):
-    telegram: Optional[bool] = True
-    email: Optional[bool] = False
+    email: Optional[bool] = True
     task_assigned: Optional[bool] = True
     task_completed: Optional[bool] = True
     dependency_ready: Optional[bool] = True
@@ -241,7 +237,7 @@ class UserStatsResponse(BaseModel):
     total_users: int
     active_users: int
     inactive_users: int
-    verified_telegram: int
+    verified_email: int
     by_role: Dict[str, int]
 
     model_config = ConfigDict(from_attributes=True)

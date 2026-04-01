@@ -5,8 +5,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import bcrypt
-from fastapi import HTTPException, status
-from peewee import *
 from peewee import logger
 
 from ..db.models.user import AuthLog, AuthSession, RecoveryCode, User, UserRole
@@ -19,7 +17,7 @@ class UserService:
     USERNAME_MIN_LENGTH = 3
     USERNAME_MAX_LENGTH = 50
     PASSWORD_MIN_LENGTH = 8
-    TG_CODE_EXPIRY_MINUTES = 10
+    EMAIL_CODE_EXPIRY_MINUTES = 10
     SESSION_EXPIRY_HOURS = 1
     REFRESH_EXPIRY_DAYS = 7
     RECOVERY_EXPIRY_HOURS = 24
@@ -143,13 +141,14 @@ class UserService:
         last_name: str,
         username: str,
         password: str,
-        email: Optional[str] = None,
-        tg_username: Optional[str] = None,
+        email: str,
     ) -> Dict[str, Any]:
         """
-        Регистрация нового пользователя
-        Возвращает данные пользователя и TG код для верификации
+        Регистрация нового пользователя; код подтверждения уходит на email.
         """
+        if not email or not str(email).strip():
+            raise ValueError('Email is required')
+
         # Валидация
         valid, error = self._validate_username(username)
         if not valid:
@@ -163,6 +162,8 @@ class UserService:
         if not valid:
             raise ValueError(f'Invalid email: {error}')
 
+        email = email.strip().lower()
+
         # Проверка уникальности
         if (
             self.user_model.select()
@@ -171,19 +172,8 @@ class UserService:
         ):
             raise ValueError('Username already taken')
 
-        if (
-            email
-            and self.user_model.select().where(self.user_model.email == email).exists()
-        ):
+        if self.user_model.select().where(self.user_model.email == email).exists():
             raise ValueError('Email already registered')
-
-        if (
-            tg_username
-            and self.user_model.select()
-            .where(self.user_model.tg_username == tg_username)
-            .exists()
-        ):
-            raise ValueError('Telegram username already registered')
 
         # Получаем роль по умолчанию
         default_role = self.get_default_role()
@@ -191,30 +181,39 @@ class UserService:
         # Хешируем пароль
         password_hash = self._hash_password(password)
 
+        from ..config import settings
+
         # Создаем пользователя
         user = self.user_model.create(
             first_name=first_name.strip(),
             last_name=last_name.strip(),
             username=username.lower().strip(),
             password_hash=password_hash,
-            email=email.strip() if email else None,
-            tg_username=tg_username.strip() if tg_username else None,
+            email=email,
             role=default_role,
             is_active=True,
-            is_verified=False,
+            email_verified=False,
             theme_preferences=json.dumps(
                 {'mode': 'system', 'primary_color': '#1976d2', 'language': 'ru'}
             ),
         )
 
-        # Генерируем код для Telegram
-        tg_code = user.generate_tg_code()
+        code = user.generate_email_code(
+            expiry_minutes=settings.EMAIL_CODE_EXPIRY_MINUTES
+        )
         user.save()
 
         # Логируем регистрацию
         self.log_model.log(action='register', status='success', user=user)
 
-        return {'user': user, 'tg_code': tg_code, 'requires_verification': True}
+        email_sent = self.send_verification_email(user, code)
+
+        return {
+            'user': user,
+            'verification_code': code,
+            'requires_verification': True,
+            'email_sent': email_sent,
+        }
 
     # ------------------- Аутентификация -------------------
 
@@ -227,8 +226,8 @@ class UserService:
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Аутентификация пользователя
-        Возвращает сессию и флаг необходимости TG кода
+        Аутентификация пользователя.
+        Если email не подтверждён — возвращает флаг и код (отправляется на почту).
         """
         try:
             # Ищем пользователя
@@ -250,31 +249,24 @@ class UserService:
                 )
                 raise ValueError('Invalid username or password')
 
-            # ТЕСТОВЫЙ РЕЖИМ - пропускаем верификацию
             from ..config import settings
 
-            if settings.DEBUG:
-                # В режиме отладки автоматически верифицируем
-                if not user.tg_verified:
-                    user.tg_verified = True
-                    # Используем ID пользователя как основу для уникальности
-                    user.tg_id = (
-                        1000000 + user.id
-                    )  # Уникальный ID для каждого пользователя
-                    user.tg_chat_id = -(1000000 + user.id)  # Уникальный chat_id
-                    user.save()
-
-            # Проверяем верификацию Telegram
-            if not user.tg_verified:
-                # Генерируем новый код
-                tg_code = user.generate_tg_code()
+            if settings.DEBUG and not user.email_verified:
+                user.email_verified = True
                 user.save()
 
+            if not user.email_verified:
+                code = user.generate_email_code(
+                    expiry_minutes=settings.EMAIL_CODE_EXPIRY_MINUTES
+                )
+                user.save()
+                email_sent = self.send_verification_email(user, code)
                 return {
                     'requires_verification': True,
                     'user_id': user.id,
-                    'tg_code': tg_code,
+                    'verification_code': code,
                     'session': None,
+                    'email_sent': email_sent,
                 }
 
             # Создаем сессию
@@ -322,34 +314,20 @@ class UserService:
             )
             raise ValueError('Invalid username or password')
 
-    def verify_telegram_code(
-        self,
-        user_id: int,
-        code: str,
-        tg_id: Optional[int] = None,
-        tg_chat_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
+    def verify_email_code(self, user_id: int, code: str) -> Dict[str, Any]:
         """
-        Верификация Telegram кода
+        Подтверждение email по коду из письма.
         """
         try:
             user = self.user_model.get(
                 (self.user_model.id == user_id) & (self.user_model.is_active == True)
             )
 
-            # Проверяем код
-            if user.verify_tg_code(code):
-                # Сохраняем Telegram ID
-                if tg_id:
-                    user.tg_id = tg_id
-                if tg_chat_id:
-                    user.tg_chat_id = tg_chat_id
-                user.save()
-
-                # Создаем сессию
+            ok = user.verify_email_code(code)
+            user.save()
+            if ok:
                 session = self.session_model.create_session(user)
 
-                # Логируем верификацию
                 self.log_model.log(action='verify', status='success', user=user)
 
                 return {
@@ -359,18 +337,39 @@ class UserService:
                     'access_token': session.token,
                     'refresh_token': session.refresh_token,
                 }
-            else:
-                # Логируем неудачную верификацию
-                self.log_model.log(
-                    action='verify',
-                    status='failed',
-                    user=user,
-                    reason='Invalid or expired code',
-                )
-                raise ValueError('Invalid or expired verification code')
+
+            self.log_model.log(
+                action='verify',
+                status='failed',
+                user=user,
+                reason='Invalid or expired code',
+            )
+            raise ValueError('Invalid or expired verification code')
 
         except self.user_model.DoesNotExist:
             raise ValueError('User not found')
+
+    def send_verification_email(self, user: User, code: str) -> bool:
+        """Отправка кода на email пользователя (SMTP)."""
+        from ..config import settings
+
+        from .email_service import build_verification_email_body, send_email_sync
+
+        if not user.email:
+            return False
+        subject = 'Код подтверждения TaskFlow'
+        body = build_verification_email_body(code)
+        return send_email_sync(user.email, subject, body)
+
+    def send_recovery_email(self, user: User, code: str) -> bool:
+        """Отправка кода восстановления пароля на email."""
+        from .email_service import build_recovery_email_body, send_email_sync
+
+        if not user.email:
+            return False
+        subject = 'Восстановление пароля TaskFlow'
+        body = build_recovery_email_body(code)
+        return send_email_sync(user.email, subject, body)
 
     def refresh_session(self, refresh_token: str) -> Dict[str, Any]:
         """
@@ -466,6 +465,8 @@ class UserService:
                 user=user, expires_in_hours=self.RECOVERY_EXPIRY_HOURS
             )
 
+            email_sent = self.send_recovery_email(user, recovery.code)
+
             # Логируем запрос
             self.log_model.log(action='recovery', status='success', user=user)
 
@@ -474,6 +475,7 @@ class UserService:
                 'user_id': user.id,
                 'recovery_code': recovery.code,
                 'expires_at': recovery.expires_at,
+                'email_sent': email_sent,
             }
 
         except self.user_model.DoesNotExist:
@@ -554,24 +556,12 @@ class UserService:
         except self.user_model.DoesNotExist:
             return None
 
-    def get_user_by_tg_id(self, tg_id: int) -> Optional[User]:
-        """
-        Получение пользователя по Telegram ID
-        """
-        try:
-            return self.user_model.get(
-                (self.user_model.tg_id == tg_id) & (self.user_model.is_active == True)
-            )
-        except self.user_model.DoesNotExist:
-            return None
-
     def update_profile(
         self,
         user_id: int,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         email: Optional[str] = None,
-        tg_username: Optional[str] = None,
     ) -> User:
         """
         Обновление профиля пользователя
@@ -592,39 +582,20 @@ class UserService:
             if not valid:
                 raise ValueError(f'Invalid email: {error}')
 
-            # Проверяем уникальность
-            if email != user.email:
+            new_email = email.strip().lower() if email else None
+            if new_email != user.email:
                 exists = (
                     self.user_model.select()
                     .where(
-                        (self.user_model.email == email)
+                        (self.user_model.email == new_email)
                         & (self.user_model.id != user_id)
                     )
                     .exists()
                 )
                 if exists:
                     raise ValueError('Email already registered')
-                user.email = email.strip() if email else None
-
-        if tg_username is not None:
-            # Проверяем уникальность
-            if tg_username != user.tg_username:
-                exists = (
-                    self.user_model.select()
-                    .where(
-                        (self.user_model.tg_username == tg_username)
-                        & (self.user_model.id != user_id)
-                    )
-                    .exists()
-                )
-                if exists:
-                    raise ValueError('Telegram username already registered')
-                user.tg_username = tg_username.strip() if tg_username else None
-                # Сбрасываем верификацию при смене Telegram
-                if tg_username:
-                    user.tg_verified = False
-                    user.tg_id = None
-                    user.tg_chat_id = None
+                user.email = new_email
+                user.email_verified = False
 
         user.save()
 
@@ -872,7 +843,6 @@ class UserService:
                 | (self.user_model.last_name**search)
                 | (self.user_model.username**search)
                 | (self.user_model.email**search)
-                | (self.user_model.tg_username**search)
             )
 
         if role_id:
@@ -901,8 +871,10 @@ class UserService:
         active = (
             self.user_model.select().where(self.user_model.is_active == True).count()
         )
-        verified = (
-            self.user_model.select().where(self.user_model.tg_verified == True).count()
+        verified_email = (
+            self.user_model.select()
+            .where(self.user_model.email_verified == True)
+            .count()
         )
 
         # Статистика по ролям
@@ -919,81 +891,6 @@ class UserService:
             'total_users': total,
             'active_users': active,
             'inactive_users': total - active,
-            'verified_telegram': verified,
+            'verified_email': verified_email,
             'by_role': role_stats,
         }
-
-    async def send_telegram_code(self, user_id: int) -> Optional[str]:
-        """Отправка кода верификации в Telegram"""
-        user = self.get_user_by_id(user_id)
-        if not user:
-            raise ValueError('User not found')
-
-        if not user.tg_chat_id:
-            # Если нет chat_id, возвращаем код для ручного ввода
-            return user.tg_code
-
-        # Отправляем код через бота
-        from core.bot.client import get_bot
-
-        bot = get_bot()
-
-        success = await bot.send_verification_code(
-            chat_id=user.tg_chat_id, code=user.tg_code
-        )
-
-        return user.tg_code if success else None
-
-    async def send_task_notification(
-        self, user_id: int, notification_type: str, task_data: dict
-    ) -> bool:
-        """Отправка уведомления о задаче"""
-        user = self.get_user_by_id(user_id)
-        if not user or not user.tg_chat_id:
-            return False
-
-        from core.bot.client import send_telegram_notification
-
-        return await send_telegram_notification(
-            chat_id=user.tg_chat_id, notification_type=notification_type, data=task_data
-        )
-
-    async def send_telegram_notification(
-        self, user_id: int, notification_type: str, data: dict
-    ) -> bool:
-        """Отправка уведомления пользователю через Telegram"""
-        user = self.get_user_by_id(user_id)
-        if not user or not user.tg_chat_id or not user.tg_verified:
-            return False
-
-        try:
-            # Импортируем здесь, чтобы избежать циклического импорта
-            from ..bot.deps import get_bot
-
-            bot = await get_bot()
-            return await bot.send_notification(
-                chat_id=user.tg_chat_id, notification_type=notification_type, data=data
-            )
-        except Exception as e:
-            logger.error(f'Failed to send Telegram notification: {e}')
-            return False
-
-    def get_user_by_tg_code(self, tg_code: str) -> Optional[User]:
-        """Получение пользователя по Telegram коду"""
-        try:
-            return self.user_model.get(
-                (self.user_model.tg_code == tg_code)
-                & (self.user_model.is_active == True)
-            )
-        except self.user_model.DoesNotExist:
-            return None
-
-    def get_user_by_tg_username(self, tg_username: str) -> Optional[User]:
-        """Получение пользователя по Telegram username"""
-        try:
-            return self.user_model.get(
-                (self.user_model.tg_username == tg_username)
-                & (self.user_model.is_active == True)
-            )
-        except self.user_model.DoesNotExist:
-            return None

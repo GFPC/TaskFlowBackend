@@ -15,75 +15,16 @@ sys.path.insert(0, str(root_dir))
 # Устанавливаем режим тестирования ДО любого импорта
 os.environ['TESTING'] = '1'
 
-# ПОЛНОСТЬЮ ПЕРЕОПРЕДЕЛЯЕМ МОДУЛЬ core.config ДО ИМПОРТА ОСТАЛЬНОГО
-import sys
-from unittest.mock import MagicMock, patch
-
-from peewee import SqliteDatabase
-
-# Создаем тестовую БД
-test_db = SqliteDatabase(':memory:')
-
-# Создаем мок для модуля core.config
-mock_config = MagicMock()
-mock_config.database = test_db
-mock_config.IS_TESTING = True
-
-# Подменяем модуль core.config
-sys.modules['core.config'] = mock_config
-
-# Теперь импортируем все остальное - они будут использовать наш мок
+# conftest.py подменяет core.config до импорта моделей
 from fastapi.testclient import TestClient
 
 from core.db.models.user import AuthSession, RecoveryCode, User, UserRole
 from main import app
 
-# Создаем таблицы в тестовой БД
-test_db.create_tables([User, UserRole, AuthSession, RecoveryCode])
-
-# Создаем базовые роли
-UserRole.get_or_create(
-    name='Работник',
-    defaults={
-        'description': 'Стандартный пользователь',
-        'priority': 1,
-        'permissions': json.dumps({'view_tasks': True, 'edit_own_tasks': True}),
-    },
-)
-
-UserRole.get_or_create(
-    name='Менеджер проекта',
-    defaults={
-        'description': 'Управляет задачами проекта',
-        'priority': 50,
-        'permissions': json.dumps(
-            {'view_tasks': True, 'edit_all_tasks': True, 'manage_team': True}
-        ),
-    },
-)
-
-UserRole.get_or_create(
-    name='Хозяин',
-    defaults={
-        'description': 'Полный доступ к системе',
-        'priority': 100,
-        'permissions': json.dumps({'all': True}),
-    },
-)
-
 client = TestClient(app)
 
 
 # ---------- Фикстуры ----------
-@pytest.fixture(autouse=True)
-def cleanup_db():
-    """Очищаем данные между тестами, но сохраняем структуру"""
-    User.delete().execute()
-    AuthSession.delete().execute()
-    RecoveryCode.delete().execute()
-    yield
-
-
 @pytest.fixture
 def worker_role():
     """Роль работника"""
@@ -118,13 +59,9 @@ def verified_user(worker_role):
             'Password123'.encode('utf-8'), bcrypt.gensalt()
         ).decode('utf-8'),
         email='ivan@test.com',
-        tg_username='@ivan',
-        tg_id=123456789,
-        tg_chat_id=-123456789,
         role=worker_role,
         is_active=True,
-        is_verified=True,
-        tg_verified=True,
+        email_verified=True,
     )
     return user
 
@@ -142,8 +79,7 @@ def unverified_user(worker_role):
         email='petr@test.com',
         role=worker_role,
         is_active=True,
-        is_verified=False,
-        tg_verified=False,
+        email_verified=False,
     )
     return user
 
@@ -171,7 +107,6 @@ class TestAuthRegister:
                 'username': 'sergey',
                 'password': 'Password123!',
                 'email': 'sergey@test.com',
-                'tg_username': '@sergey',
             },
         )
 
@@ -179,8 +114,8 @@ class TestAuthRegister:
         data = response.json()
         assert data['requires_verification'] is True
         assert 'user_id' in data
-        assert 'tg_code' in data
-        assert len(data['tg_code']) == 6
+        assert data.get('verification_code')
+        assert len(data['verification_code']) == 6
 
         user = User.get_or_none(User.username == 'sergey')
         assert user is not None
@@ -197,6 +132,7 @@ class TestAuthRegister:
                 'last_name': 'Иванов',
                 'username': 'ivan_verified',
                 'password': 'Password123!',
+                'email': 'newuser@test.com',
             },
         )
 
@@ -228,6 +164,7 @@ class TestAuthRegister:
                 'last_name': 'Аннова',
                 'username': 'anna',
                 'password': 'weak',
+                'email': 'anna@test.com',
             },
         )
 
@@ -263,7 +200,7 @@ class TestAuthLogin:
         data = response.json()
         assert data['requires_verification'] is True
         assert 'user_id' in data
-        assert 'tg_code' in data
+        assert data.get('verification_code')
         assert 'access_token' not in data
 
     def test_login_wrong_password(self, verified_user):
@@ -287,21 +224,19 @@ class TestAuthLogin:
         assert 'Invalid username or password' in response.text
 
 
-class TestTelegramVerification:
-    """Тесты верификации Telegram"""
+class TestEmailVerification:
+    """Тесты верификации email"""
 
-    def test_verify_telegram_success(self, unverified_user):
-        """Успешная верификация Telegram"""
-        tg_code = unverified_user.generate_tg_code()
+    def test_verify_email_success(self, unverified_user):
+        """Успешная верификация кода из письма"""
+        code = unverified_user.generate_email_code()
         unverified_user.save()
 
         response = client.post(
-            '/api/v1/auth/verify-telegram',
+            '/api/v1/auth/verify-email',
             json={
                 'user_id': unverified_user.id,
-                'code': tg_code,
-                'tg_id': 987654321,
-                'tg_chat_id': -987654321,
+                'code': code,
             },
         )
 
@@ -312,30 +247,29 @@ class TestTelegramVerification:
         assert 'user' in data
 
         user = User.get_by_id(unverified_user.id)
-        assert user.tg_verified is True
-        assert user.tg_id == 987654321
+        assert user.email_verified is True
 
-    def test_verify_telegram_invalid_code(self, unverified_user):
+    def test_verify_email_invalid_code(self, unverified_user):
         """Неверный код"""
-        unverified_user.generate_tg_code()
+        unverified_user.generate_email_code()
         unverified_user.save()
 
         response = client.post(
-            '/api/v1/auth/verify-telegram',
+            '/api/v1/auth/verify-email',
             json={'user_id': unverified_user.id, 'code': '000000'},
         )
 
         assert response.status_code == 400
         assert 'Invalid or expired verification code' in response.text
 
-    def test_verify_telegram_expired_code(self, unverified_user):
+    def test_verify_email_expired_code(self, unverified_user):
         """Просроченный код"""
-        unverified_user.tg_code = '123456'
-        unverified_user.tg_code_expires = datetime.now() - timedelta(minutes=1)
+        unverified_user.email_code = '123456'
+        unverified_user.email_code_expires = datetime.now() - timedelta(minutes=1)
         unverified_user.save()
 
         response = client.post(
-            '/api/v1/auth/verify-telegram',
+            '/api/v1/auth/verify-email',
             json={'user_id': unverified_user.id, 'code': '123456'},
         )
 

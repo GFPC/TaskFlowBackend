@@ -2,445 +2,69 @@
 
 ## 📋 Саммари для будущих чатов
 
-### 🎯 **Проект**: TaskFlow - Веб-приложение для мониторинга задач с Dependency Graph
-**Стек**: Python FastAPI + MySQL + Peewee ORM, React + ReactFlow, Telegram Bot (aiogram)
+### 🎯 **Проект**: TaskFlow — веб-приложение для мониторинга задач с графом зависимостей
+**Стек**: Python FastAPI + MySQL + Peewee ORM, React + ReactFlow. Подтверждение аккаунта и сброс пароля — **по email** (SMTP или Resend API).
 
 ### ✅ **Что уже реализовано:**
 
 #### 1. **Модели БД** (`core/db/models/user.py`)
-- `User` - пользователи с Telegram верификацией
-- `UserRole` - роли (Работник, Менеджер, Хозяин) с правами
-- `AuthSession` - сессии с access/refresh токенами
-- `RecoveryCode` - восстановление пароля
-- `AuthLog` - логирование действий
+- `User` — пользователи с полями `email`, `email_verified`, коды OTP (`email_code`, срок, попытки)
+- `UserRole` — глобальные роли (Работник, Менеджер, Хозяин)
+- `AuthSession` — access/refresh токены
+- `RecoveryCode` — одноразовые коды восстановления пароля
+- `AuthLog` — аудит входов и действий
 
 #### 2. **Бизнес-логика** (`core/services/UserService.py`)
-- ✅ Регистрация, логин, logout
-- ✅ Telegram верификация (6-значные коды)
-- ✅ JWT токены (access + refresh)
-- ✅ Восстановление пароля
-- ✅ Управление профилем
-- ✅ CRUD ролей
-- ✅ Админ-функции
+- Регистрация с обязательным email и отправкой 6-значного кода
+- Вход: при неподтверждённом email — новый код на почту
+- `verify_email_code` — подтверждение и выдача сессии
+- JWT (access + refresh), logout / logout-all
+- Восстановление пароля: код на email, затем `reset_password`
+- Профиль, тема, уведомления, админ-операции
 
-#### 3. **REST API** (`core/api/routes/`)
-- ✅ `auth.py` - 8 эндпоинтов аутентификации
-- ✅ `users.py` - 9 эндпоинтов управления профилем
-- ✅ `admin.py` - 5 эндпоинтов администрирования
-- ✅ `roles.py` - 5 эндпоинтов CRUD ролей
-- ✅ `telegram.py` - 4 эндпоинта для Telegram
+#### 3. **Почта** (`core/services/email_service.py`, `core/config.py`)
+- Приоритет: **Resend** (`RESEND_API_KEY`), иначе **SMTP** (например Timeweb: `SMTP_HOST`, порт 2525, STARTTLS)
+- Учётные данные ящика: `EMAIL_FROM`, `EMAIL_PASSWORD` или `SMTP_PASSWORD`, опционально `SMTP_USER`
 
-#### 4. **Telegram Bot** (`core/bot/bot.py`)
-- ✅ Aiogram 3.x, polling режим
-- ✅ Привязка по 6-значному коду
-- ✅ Команды `/start`, `/code`
-- ✅ Инлайн-клавиатуры
-- ✅ Уведомления о задачах
+#### 4. **REST API** (`core/api/routes/`)
+- `auth.py` — register, login, verify-email, refresh, logout, logout-all, recovery/initiate, recovery/reset
+- `users.py`, `teams.py`, `projects.py`, `tasks.py`, `admin.py`, `roles.py`
 
-#### 5. **Тестирование**
-- ✅ 102 unit-теста UserService
-- ✅ 11 live API тестов (все проходят)
-- ✅ In-memory SQLite для тестов
+#### 5. **Граф задач**
+- `GET` / `PUT` `/api/v1/projects/{project_slug}/tasks/graph` — загрузка и сохранение графа (ReactFlow: nodes, edges, viewport)
+- Зависимости: `POST` `.../tasks/{task_id}/dependencies`, `DELETE` `.../tasks/dependencies/{dependency_id}`
+
+#### 6. **Тестирование**
+- Unit и API-тесты (pytest, TestClient / SQLite в тестах)
 
 ---
 
-## 🔄 **Ключевые Flow для фронтенда**
+## 🔄 **Ключевые flow для фронтенда (email + граф)**
 
-### 1. 🚀 **Регистрация нового пользователя**
+Подробные сценарии запросов и полей ответов см. в [Front.md](./Front.md) (разделы «Аутентификация» и «Интеграция: email и граф»).
 
-```typescript
-// ========== FLOW РЕГИСТРАЦИИ ==========
-// 1. Пользователь заполняет форму
-interface RegisterData {
-  first_name: string;
-  last_name: string;
-  username: string;      // минимум 3 символа, только a-z0-9_.-
-  password: string;      // минимум 8, заглавная, строчная, цифра
-  email?: string;        // опционально, валидация email
-  tg_username?: string;  // опционально, формат @username
-}
+### 1. Регистрация
 
-// 2. Отправка запроса
-POST /api/v1/auth/register
+- `POST /api/v1/auth/register` с обязательным `email`, полями профиля и паролем.
+- Ответ: `user_id`, `email_sent`, опционально `verification_code` (только в отладке или если письмо не отправилось).
+- Далее экран ввода 6-значного кода и `POST /api/v1/auth/verify-email` с `{ user_id, code }` → токены и профиль.
 
-// 3. Успешный ответ (200 OK)
-{
-  "requires_verification": true,
-  "user_id": 123,
-  "tg_code": "483291"  // 6-значный код
-}
+### 2. Вход
 
-// 4. UI - отображение кода
-```
+- `POST /api/v1/auth/login`. Если `email_verified === false`: ответ с `requires_verification: true`, `user_id`, опционально `verification_code`, поле `email_sent`.
+- Подтверждение — тот же `POST /api/v1/auth/verify-email`.
 
-**📱 Отображение в React:**
-```tsx
-// Компонент после успешной регистрации
-const RegistrationSuccess = ({ userId, tgCode }) => {
-  return (
-    <Card>
-      <Typography variant="h5">
-        ✅ Почти готово!
-      </Typography>
-      
-      <Alert severity="info">
-        Для завершения регистрации привяжите Telegram
-      </Alert>
+### 3. Восстановление пароля
 
-      {/* Крупный код для копирования */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', my: 3 }}>
-        <Paper 
-          elevation={3} 
-          sx={{ 
-            p: 2, 
-            bgcolor: '#f5f5f5',
-            border: '2px dashed #1976d2'
-          }}
-        >
-          <Typography variant="h2" sx={{ letterSpacing: 8 }}>
-            {tgCode}
-          </Typography>
-        </Paper>
-        
-        <Button 
-          startIcon={<ContentCopyIcon />}
-          onClick={() => navigator.clipboard.writeText(tgCode)}
-          sx={{ ml: 2 }}
-        >
-          Копировать
-        </Button>
-      </Box>
+- `POST /api/v1/auth/recovery/initiate` с `{ "username": "..." }` (в теле JSON).
+- При успехе на email уходит код; в JSON могут быть `email_sent`, `recovery_code` (код в ответе только при `DEBUG` или сбое отправки письма — ориентируйтесь на `email_sent` и продакшен без утечки кода).
+- `POST /api/v1/auth/recovery/reset` с `recovery_code` и `new_password`.
 
-      {/* Инструкция */}
-      <Box sx={{ mt: 3 }}>
-        <Typography variant="subtitle1" gutterBottom>
-          📌 <b>Как привязать Telegram:</b>
-        </Typography>
-        <List>
-          <ListItem>1. Откройте бота: <b>@taskflow_bot</b></ListItem>
-          <ListItem>2. Отправьте команду <b>/start</b></ListItem>
-          <ListItem>3. Отправьте код <b>{tgCode}</b></ListItem>
-        </List>
-      </Box>
+### 4. Граф (React Flow)
 
-      {/* Кнопка "Проверить статус" */}
-      <Button 
-        variant="contained"
-        onClick={() => checkVerificationStatus(userId)}
-        sx={{ mt: 2 }}
-      >
-        Я привязал, проверить
-      </Button>
-    </Card>
-  );
-};
-
-// Polling для проверки статуса
-useEffect(() => {
-  if (userId && !isVerified) {
-    const interval = setInterval(async () => {
-      const status = await checkTelegramStatus(userId);
-      if (status.is_linked) {
-        setIsVerified(true);
-        router.push('/dashboard');
-      }
-    }, 3000);
-    
-    return () => clearInterval(interval);
-  }
-}, [userId]);
-```
-
----
-
-### 2. 🔐 **Логин + Telegram верификация**
-
-```typescript
-// ========== FLOW ВХОДА ==========
-// 1. Форма логина
-POST /api/v1/auth/login
-{
-  "username": "ivanov",
-  "password": "Password123"
-}
-
-// 2. Возможные ответы:
-
-// Случай А: Уже верифицирован
-{
-  "requires_verification": false,
-  "access_token": "eyJ...",
-  "refresh_token": "abc...",
-  "user": {
-    "id": 123,
-    "username": "ivanov",
-    "first_name": "Иван",
-    "last_name": "Иванов",
-    "tg_verified": true
-  }
-}
-// → Редирект на /dashboard
-
-// Случай Б: Требуется верификация
-{
-  "requires_verification": true,
-  "user_id": 123,
-  "tg_code": "483291"
-}
-// → Показать экран верификации
-```
-
-**📱 Компонент верификации:**
-```tsx
-const TelegramVerification = ({ userId, initialCode }) => {
-  const [code, setCode] = useState(initialCode);
-  const [manualCode, setManualCode] = useState('');
-  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
-  
-  // Автоматический режим - код уже сгенерирован
-  if (mode === 'auto') {
-    return (
-      <Card>
-        <Typography variant="h5">
-          🔐 Подтверждение входа
-        </Typography>
-        
-        <Alert severity="warning">
-          Мы отправили код в Telegram. Проверьте бота @taskflow_bot
-        </Alert>
-        
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
-          <CircularProgress />
-          <Typography sx={{ ml: 2 }}>
-            Ожидаем подтверждение...
-          </Typography>
-        </Box>
-        
-        <Button onClick={() => setMode('manual')}>
-          Ввести код вручную
-        </Button>
-      </Card>
-    );
-  }
-  
-  // Ручной режим - пользователь вводит код
-  return (
-    <Card>
-      <Typography variant="h5">
-        🔐 Введите код из Telegram
-      </Typography>
-      
-      <TextField
-        label="6-значный код"
-        value={manualCode}
-        onChange={(e) => setManualCode(e.target.value)}
-        inputProps={{ maxLength: 6 }}
-        sx={{ my: 2 }}
-      />
-      
-      <Button
-        variant="contained"
-        onClick={() => verifyCode(userId, manualCode)}
-        disabled={manualCode.length !== 6}
-      >
-        Подтвердить
-      </Button>
-      
-      <Button 
-        variant="text"
-        onClick={() => generateNewCode(userId)}
-        sx={{ mt: 1 }}
-      >
-        Отправить новый код
-      </Button>
-    </Card>
-  );
-};
-
-// Проверка кода
-const verifyCode = async (userId, code) => {
-  try {
-    const response = await api.post('/auth/verify-telegram', {
-      user_id: userId,
-      code: code
-    });
-    
-    // Успех - получаем токены
-    localStorage.setItem('access_token', response.access_token);
-    localStorage.setItem('refresh_token', response.refresh_token);
-    router.push('/dashboard');
-  } catch (error) {
-    // Ошибка
-    if (error.response?.status === 400) {
-      if (error.response.data.detail.includes('expired')) {
-        showToast('Код истек, запросите новый');
-      } else {
-        showToast('Неверный код');
-      }
-    }
-  }
-};
-```
-
----
-
-### 3. 📲 **Привязка Telegram из профиля**
-
-```typescript
-// ========== FLOW ПРИВЯЗКИ TELEGRAM ==========
-// 1. Пользователь нажимает "Привязать Telegram" в профиле
-
-// 2. Запрос на генерацию кода
-POST /api/v1/telegram/link
-Headers: { Authorization: `Bearer ${token}` }
-
-// 3. Ответ
-{
-  "code": "483291",           // 6-значный код
-  "sent_to_telegram": false,  // true если уже есть chat_id
-  "expires_in": 10,          // минут
-  "bot_username": "@taskflow_bot"
-}
-
-// 4. UI - показываем код и инструкцию
-```
-
-**📱 Компонент привязки:**
-```tsx
-const TelegramLink = () => {
-  const [step, setStep] = useState<'initial' | 'code' | 'success'>('initial');
-  const [code, setCode] = useState('');
-  const [status, setStatus] = useState(null);
-  
-  // Получить статус привязки
-  const checkStatus = async () => {
-    const response = await api.get('/telegram/status');
-    setStatus(response);
-    return response.is_linked;
-  };
-  
-  // Начать привязку
-  const handleLink = async () => {
-    const response = await api.post('/telegram/link');
-    setCode(response.code);
-    setStep('code');
-    
-    // Автоматическая проверка каждые 3 секунды
-    const interval = setInterval(async () => {
-      const isLinked = await checkStatus();
-      if (isLinked) {
-        clearInterval(interval);
-        setStep('success');
-      }
-    }, 3000);
-  };
-  
-  // Отвязать
-  const handleUnlink = async () => {
-    await api.delete('/telegram/unlink');
-    setStatus({ ...status, is_linked: false });
-  };
-  
-  // Отправить тестовое уведомление
-  const sendTest = async () => {
-    await api.post('/telegram/test');
-    showToast('✅ Тестовое уведомление отправлено');
-  };
-  
-  if (status?.is_linked) {
-    return (
-      <Card>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <TelegramIcon sx={{ color: '#0088cc', mr: 2 }} />
-          <Box flex={1}>
-            <Typography variant="h6">Telegram привязан</Typography>
-            <Typography variant="body2" color="text.secondary">
-              @{status.tg_username}
-            </Typography>
-          </Box>
-          <Button onClick={sendTest} sx={{ mr: 1 }}>
-            Тест
-          </Button>
-          <Button color="error" onClick={handleUnlink}>
-            Отвязать
-          </Button>
-        </Box>
-      </Card>
-    );
-  }
-  
-  if (step === 'code') {
-    return (
-      <Card>
-        <Typography variant="h6">
-          🔑 Код подтверждения
-        </Typography>
-        
-        <Box sx={{ my: 3 }}>
-          <Typography variant="h2" sx={{ letterSpacing: 4 }}>
-            {code}
-          </Typography>
-        </Box>
-        
-        <Alert severity="info">
-          Отправьте этот код боту <b>@taskflow_bot</b>
-        </Alert>
-        
-        <Box sx={{ mt: 2 }}>
-          <CircularProgress size={20} sx={{ mr: 1 }} />
-          <Typography variant="body2" component="span">
-            Ожидаем подтверждение...
-          </Typography>
-        </Box>
-      </Card>
-    );
-  }
-  
-  return (
-    <Button
-      variant="outlined"
-      startIcon={<TelegramIcon />}
-      onClick={handleLink}
-    >
-      Привязать Telegram
-    </Button>
-  );
-};
-```
-
----
-
-### 4. 🔄 **Восстановление пароля**
-
-```typescript
-// ========== FLOW ВОССТАНОВЛЕНИЯ ПАРОЛЯ ==========
-// 1. Пользователь ввел username
-POST /api/v1/auth/recovery/initiate
-{
-  "username": "ivanov"
-}
-
-// 2. Ответ (всегда 200, даже если пользователь не найден)
-{
-  "success": true,
-  "user_id": 123,
-  "recovery_code": "abc123...",  // длинный токен
-  "expires_at": "2024-01-01T12:00:00"
-}
-
-// 3. Пользователь вводит код из письма/Telegram
-POST /api/v1/auth/recovery/reset
-{
-  "recovery_code": "abc123...",
-  "new_password": "NewPass123!"
-}
-
-// 4. Успех
-{
-  "success": true,
-  "message": "Password successfully reset"
-}
-```
+- Чтение: `GET /api/v1/projects/{project_slug}/tasks/graph`.
+- Сохранение позиций и viewport: `PUT` на тот же путь, тело — `{ nodes, edges, viewport }` (см. схемы в API и [Front.md](./Front.md)).
+- Зависимости между задачами: `POST .../tasks/{task_id}/dependencies`, удаление ребра: `DELETE .../tasks/dependencies/{dependency_id}`.
 
 ---
 
@@ -461,9 +85,9 @@ const PASSWORD_REQUIREMENTS = [
   { regex: /[0-9]/, message: 'цифра' }
 ];
 
-// Telegram code
-const TG_CODE_LENGTH = 6;
-const TG_CODE_EXPIRY = 10; // минут
+// Email OTP (подтверждение регистрации / входа)
+const EMAIL_CODE_LENGTH = 6;
+const EMAIL_CODE_EXPIRY_MINUTES = 10; // как на бэкенде (EMAIL_CODE_EXPIRY_MINUTES)
 ```
 
 ### 🚦 **HTTP Status Codes**
@@ -475,26 +99,28 @@ const TG_CODE_EXPIRY = 10; // минут
 - `422` - Pydantic валидация (неправильный формат)
 - `500` - Ошибка сервера
 
-### 📁 **Структура проекта для фронтенда**
+### 📁 **Структура проекта для фронтенда (пример)**
 ```
 src/
 ├── api/
-│   ├── auth.ts      # login, register, refresh, logout
+│   ├── auth.ts      # register, login, verify-email, refresh, recovery
 │   ├── users.ts     # profile, update, password
-│   ├── admin.ts     # search, stats, roles
-│   └── telegram.ts  # link, status, test
+│   ├── teams.ts
+│   ├── projects.ts
+│   ├── tasks.ts     # в т.ч. graph GET/PUT
+│   └── admin.ts
 ├── components/
 │   ├── auth/
 │   │   ├── RegisterForm.tsx
 │   │   ├── LoginForm.tsx
-│   │   └── TelegramVerification.tsx
-│   └── profile/
-│       └── TelegramLink.tsx
+│   │   └── EmailCodeVerification.tsx
+│   └── project/
+│       └── TaskGraphBoard.tsx
 ├── hooks/
-│   ├── useAuth.ts    # авторизация, токены
-│   └── useTelegram.ts # статус привязки, polling
+│   ├── useAuth.ts
+│   └── useProjectGraph.ts
 └── types/
-    └── index.ts      # интерфейсы
+    └── index.ts
 ```
 
 ---
@@ -520,24 +146,21 @@ src/
    );
    ```
 
-3. **Polling для Telegram**
-   - Регистрация: проверять статус каждые 3 секунды
-   - Логин: проверять статус каждые 3 секунды
-   - Привязка: проверять статус каждые 3 секунды
+3. **Код из письма**
+   - Пользователь вводит 6 цифр на экране; отдельный polling статуса не нужен (в отличие от бота).
+   - Подсказка в UI: «Проверьте почту (и папку «Спам»)».
 
-4. **Всегда показывайте код крупно**
-   - 6 цифр, моноширинный шрифт
-   - Кнопка "Копировать"
-   - Четкая инструкция
+4. **Отображение кода (только dev / если `email_sent === false`)**
+   - Если бэкенд вернул `verification_code` (отладка или ошибка SMTP), можно показать код крупно и кнопку «Копировать».
+   - В продакшене при успешной отправке поле кода в ответе обычно отсутствует.
 
 ---
 
 ## 🚀 **Быстрый старт для фронтенда**
 
 ```bash
-# Переменные окружения
+# Переменные окружения фронтенда
 REACT_APP_API_URL=http://localhost:8000
-REACT_APP_TELEGRAM_BOT=@taskflow_bot
 
 # Установка зависимостей
 npm install @mui/material @emotion/react @emotion/styled
@@ -556,12 +179,9 @@ npm start
 python main.py
 
 # Запуск тестов API
-python -m pytest tests/test_api/test_auth_live.py -v
-
-# Telegram бот запускается автоматически с бэкендом
-# Бот доступен по адресу: https://t.me/taskflow_bot
+python -m pytest tests/test_api/test_auth.py -v
 ```
 
 ---
 
-Это саммари содержит **100% рабочей информации** по текущему состоянию проекта. Все API эндпоинты протестированы и работают, все тесты проходят. Можно смело начинать разработку фронтенда! 🎯
+Актуальные контракты API и сценарии интеграции см. в [Front.md](./Front.md). При расхождении с кодом приоритет у репозитория.

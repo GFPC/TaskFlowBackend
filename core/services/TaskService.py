@@ -1,4 +1,3 @@
-import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,8 +7,6 @@ from peewee import logger
 
 from ..db.models.project import Project, ProjectMember
 from ..db.models.task import (
-    DependencyAction,
-    DependencyActionType,
     ScheduledAction,
     Task,
     TaskDependency,
@@ -29,8 +26,6 @@ class TaskService:
         self.task_model = Task
         self.status_model = TaskStatus
         self.dependency_model = TaskDependency
-        self.action_type_model = DependencyActionType
-        self.action_model = DependencyAction
         self.event_model = TaskEvent
         self.scheduled_model = ScheduledAction
 
@@ -46,28 +41,11 @@ class TaskService:
             statuses[status.name] = status
         return statuses
 
-    def ensure_default_action_types(self) -> Dict[str, DependencyActionType]:
-        """Создание стандартных типов действий"""
-        action_types = {}
-        for type_data in self.action_type_model.get_default_types():
-            action_type, created = self.action_type_model.get_or_create(
-                code=type_data['code'], defaults=type_data
-            )
-            action_types[type_data['code']] = action_type
-        return action_types
-
     def get_status_by_name(self, name: str) -> Optional[TaskStatus]:
         """Получение статуса по имени"""
         try:
             return self.status_model.get(self.status_model.name == name)
         except self.status_model.DoesNotExist:
-            return None
-
-    def get_action_type_by_code(self, code: str) -> Optional[DependencyActionType]:
-        """Получение типа действия по коду"""
-        try:
-            return self.action_type_model.get(self.action_type_model.code == code)
-        except self.action_type_model.DoesNotExist:
             return None
 
     # ------------------- Создание задач -------------------
@@ -280,7 +258,6 @@ class TaskService:
                 'status_changed': False,
                 'old_status': old_status,
                 'new_status': new_status,
-                'actions_executed': [],
             }
 
         # Меняем статус
@@ -304,14 +281,11 @@ class TaskService:
             'status_changed': True,
             'old_status': old_status,
             'new_status': new_status,
-            'actions_executed': [],
         }
 
-        # Если задача выполнена - обрабатываем зависимости
         if new_status.is_final and not old_status.is_final:
             try:
-                actions = self.handle_task_completed(task, changed_by)
-                result['actions_executed'] = actions
+                self._refresh_downstream_readiness(task)
             except Exception as e:
                 logger.error(f'Error handling task completion: {e}')
 
@@ -383,10 +357,6 @@ class TaskService:
                 'target_task_name': target_task.name,
             },
         )
-
-        # Если исходная задача уже выполнена - выполняем действия сразу
-        if source_task.status.is_final:
-            self.execute_dependency_actions(dependency, 'task_completed', created_by)
 
         return dependency
 
@@ -462,251 +432,14 @@ class TaskService:
 
         return {'incoming': incoming, 'outgoing': outgoing}
 
-    # ------------------- Действия на зависимостях -------------------
-
-    def add_dependency_action(
-        self,
-        dependency: TaskDependency,
-        action_type_code: str,
-        created_by: User,
-        target_user: Optional[User] = None,
-        target_status_name: Optional[str] = None,
-        message_template: Optional[str] = None,
-        delay_minutes: int = 0,
-        execute_order: int = 0,
-    ) -> DependencyAction:
-        """
-        Добавление действия к зависимости
-        """
-        from .ProjectService import ProjectService
-
-        project_service = ProjectService()
-
-        # Проверяем права (только менеджеры/владельцы могут добавлять действия)
-        role = project_service.get_user_role_in_project(created_by, dependency.project)
-        if not role or not role.can_edit_any_task:
-            raise PermissionError("You don't have permission to add dependency actions")
-
-        action_type = self.get_action_type_by_code(action_type_code)
-        if not action_type:
-            raise ValueError(f"Action type '{action_type_code}' not found")
-
-        # Валидация в зависимости от типа действия
-        if action_type.requires_target_user and not target_user:
-            raise ValueError(f"Action type '{action_type_code}' requires target_user")
-
-        if action_type.requires_template and not message_template:
-            # Для notify_assignee используем шаблон по умолчанию
-            if action_type_code == 'notify_assignee':
-                message_template = (
-                    f'Задача {dependency.target_task.name} готова к выполнению!'
-                )
-            else:
-                raise ValueError(
-                    f"Action type '{action_type_code}' requires message_template"
-                )
-
-        target_status = None
-        if action_type_code == 'change_status' and target_status_name:
-            target_status = self.get_status_by_name(target_status_name)
-            if not target_status:
-                raise ValueError(f"Status '{target_status_name}' not found")
-
-        action = self.action_model.create(
-            dependency=dependency,
-            action_type=action_type,
-            target_user=target_user,
-            target_status=target_status,
-            message_template=message_template,
-            delay_minutes=delay_minutes,
-            execute_order=execute_order,
-        )
-
-        return action
-
-    def remove_dependency_action(
-        self, action: DependencyAction, removed_by: User
-    ) -> bool:
-        """
-        Удаление действия с зависимости
-        """
-        from .ProjectService import ProjectService
-
-        project_service = ProjectService()
-
-        role = project_service.get_user_role_in_project(
-            removed_by, action.dependency.project
-        )
-        if not role or not role.can_edit_any_task:
-            raise PermissionError(
-                "You don't have permission to remove dependency actions"
-            )
-
-        action.delete_instance()
-        return True
-
-    # ------------------- Обработка событий -------------------
-
-    def handle_task_completed(
-        self, task: Task, completed_by: User
-    ) -> List[Dict[str, Any]]:
-        """
-        Обработка завершения задачи - выполнение действий на исходящих ребрах
-        """
-        executed_actions = []
-
-        # Находим все исходящие зависимости
+    def _refresh_downstream_readiness(self, task: Task) -> None:
+        """После завершения задачи пересчитать готовность зависимых."""
         outgoing = self.dependency_model.select().where(
             (self.dependency_model.project == task.project)
             & (self.dependency_model.source_task == task)
         )
-
         for dependency in outgoing:
-            # Выполняем действия
-            actions = self.execute_dependency_actions(
-                dependency, 'task_completed', completed_by
-            )
-            executed_actions.extend(actions)
-
-            # Проверяем готовность целевой задачи
             self.check_task_readiness(dependency.target_task)
-
-        return executed_actions
-
-    def execute_dependency_actions(
-        self, dependency: TaskDependency, trigger_event: str, triggered_by: User
-    ) -> List[Dict[str, Any]]:
-        """
-        Выполнение всех действий на зависимости
-        """
-        executed = []
-
-        # Получаем активные действия
-        actions = (
-            self.action_model.select()
-            .where(
-                (self.action_model.dependency == dependency)
-                & (self.action_model.is_active == True)
-            )
-            .order_by(self.action_model.execute_order)
-        )
-
-        for action in actions:
-            if action.delay_minutes > 0:
-                # Отложенное действие
-                scheduled = self.scheduled_model.create(
-                    project=dependency.project,
-                    task=dependency.target_task,
-                    action_type='delayed_notification',
-                    scheduled_for=datetime.now()
-                    + timedelta(minutes=action.delay_minutes),
-                    payload=json.dumps(
-                        {
-                            'action_id': action.id,
-                            'trigger_event': trigger_event,
-                            'triggered_by': triggered_by.username,
-                        }
-                    ),
-                    dependency_action=action,
-                )
-                executed.append(
-                    {
-                        'action_id': action.id,
-                        'type': action.action_type.code,
-                        'status': 'scheduled',
-                        'scheduled_for': scheduled.scheduled_for,
-                    }
-                )
-            else:
-                # Немедленное выполнение
-                result = self.execute_single_action(action, trigger_event, triggered_by)
-                executed.append(result)
-
-        return executed
-
-    def execute_single_action(
-        self, action: DependencyAction, trigger_event: str, triggered_by: User
-    ) -> Dict[str, Any]:
-        """
-        Выполнение одного действия
-        """
-        result = {
-            'action_id': action.id,
-            'type': action.action_type.code,
-            'status': 'executed',
-            'timestamp': datetime.now(),
-        }
-
-        try:
-            if action.action_type.code == 'notify_assignee':
-                # Уведомить исполнителя целевой задачи
-                target_task = action.dependency.target_task
-                if target_task.assignee:
-                    self.send_task_notification(
-                        user=target_task.assignee,
-                        notification_type='task_ready',
-                        task_data={
-                            'task_id': target_task.id,
-                            'task_name': target_task.name,
-                            'project_name': target_task.project.name,
-                            'message': action.message_template
-                            or f'Задача готова к выполнению: {target_task.name}',
-                        },
-                    )
-                    result['target_user'] = target_task.assignee.username
-
-            elif action.action_type.code == 'notify_creator':
-                # Уведомить создателя исходной задачи
-                source_task = action.dependency.source_task
-                self.send_task_notification(
-                    user=source_task.creator,
-                    notification_type='task_completed',
-                    task_data={
-                        'task_id': source_task.id,
-                        'task_name': source_task.name,
-                        'project_name': source_task.project.name,
-                        'message': action.message_template
-                        or f'Задача выполнена: {source_task.name}',
-                    },
-                )
-                result['target_user'] = source_task.creator.username
-
-            elif action.action_type.code == 'notify_custom' and action.target_user:
-                # Уведомить конкретного пользователя
-                self.send_task_notification(
-                    user=action.target_user,
-                    notification_type='custom',
-                    task_data={
-                        'task_id': action.dependency.target_task.id,
-                        'task_name': action.dependency.target_task.name,
-                        'project_name': action.dependency.project.name,
-                        'message': action.message_template or 'Уведомление о задаче',
-                    },
-                )
-                result['target_user'] = action.target_user.username
-
-            elif action.action_type.code == 'change_status' and action.target_status:
-                # Изменить статус целевой задачи
-                target_task = action.dependency.target_task
-                old_status = target_task.status
-                target_task.status = action.target_status
-                target_task.save()
-
-                self.event_model.log(
-                    task=target_task,
-                    user=triggered_by,
-                    event_type='status_changed',
-                    old_value=old_status.name,
-                    new_value=action.target_status.name,
-                    metadata={'triggered_by_action': action.id},
-                )
-                result['new_status'] = action.target_status.name
-
-        except Exception as e:
-            result['status'] = 'failed'
-            result['error'] = str(e)
-
-        return result
 
     def check_task_readiness(self, task: Task) -> bool:
         """
@@ -763,49 +496,8 @@ class TaskService:
     def send_task_notification(
         self, user: User, notification_type: str, task_data: Dict[str, Any]
     ) -> bool:
-        """
-        Отправка уведомления пользователю
-        """
-        # Проверяем настройки уведомлений
-        settings = user.notification_settings_dict
-
-        if notification_type == 'task_ready' and not settings.get(
-            'dependency_ready', True
-        ):
-            return False
-        if notification_type == 'task_completed' and not settings.get(
-            'task_completed', True
-        ):
-            return False
-        if notification_type == 'task_assigned' and not settings.get(
-            'task_assigned', True
-        ):
-            return False
-
-        # Отправляем через UserService
-        from .UserService import UserService
-
-        user_service = UserService()
-
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        if loop.is_running():
-            asyncio.create_task(
-                user_service.send_telegram_notification(
-                    user_id=user.id, notification_type=notification_type, data=task_data
-                )
-            )
-            return True
-        else:
-            return loop.run_until_complete(
-                user_service.send_telegram_notification(
-                    user_id=user.id, notification_type=notification_type, data=task_data
-                )
-            )
+        """Зарезервировано под будущие каналы (email / in-app)."""
+        return False
 
     # ------------------- Получение данных -------------------
 
@@ -894,23 +586,13 @@ class TaskService:
 
         edges = []
         for dep in dependencies:
-            actions = list(dep.actions.where(DependencyAction.is_active == True))
             edges.append(
                 {
                     'id': f'e{dep.source_task_id}-{dep.target_task_id}',
                     'source': str(dep.source_task_id),
                     'target': str(dep.target_task_id),
                     'type': dep.dependency_type,
-                    'data': {
-                        'description': dep.description,
-                        'actions': [
-                            {
-                                'type': action.action_type.code,
-                                'delay': action.delay_minutes,
-                            }
-                            for action in actions
-                        ],
-                    },
+                    'data': {'description': dep.description},
                     'animated': dep.dependency_type != 'simple',
                 }
             )
@@ -960,20 +642,8 @@ class TaskService:
                             },
                         )
                     scheduled.status = 'completed'
-
-                elif (
-                    scheduled.action_type == 'delayed_notification'
-                    and scheduled.dependency_action
-                ):
-                    result = self.execute_single_action(
-                        scheduled.dependency_action,
-                        'delayed',
-                        scheduled.dependency_action.dependency.created_by,
-                    )
+                else:
                     scheduled.status = 'completed'
-                    scheduled.payload = json.dumps(
-                        {**json.loads(scheduled.payload or '{}'), 'result': result}
-                    )
 
                 scheduled.executed_at = now
                 scheduled.save()

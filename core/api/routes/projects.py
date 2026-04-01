@@ -7,7 +7,6 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ...db.models.project import Project, ProjectInvitation, ProjectMember
-from ...db.models.task import Task
 from ...db.models.user import User
 from ...services.ProjectService import ProjectService
 from ...services.TeamService import TeamService
@@ -21,7 +20,6 @@ from ..deps import (
 from ..schemas.project import (
     ProjectCreate,
     ProjectDetailResponse,
-    ProjectGraphData,
     ProjectInvitationCreate,
     ProjectInvitationResponse,
     ProjectMemberAdd,
@@ -717,64 +715,6 @@ async def get_project_stats(
         raise
     except Exception as e:
         logger.error(f'Error getting project stats: {e}', exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-
-
-# ==================== ГРАФ ПРОЕКТА ====================
-
-
-@router.put('/{project_slug}/graph')
-async def save_project_graph(
-    project_slug: str,
-    graph_data: ProjectGraphData,
-    current_user: User = Depends(get_current_active_user),
-    project_service: ProjectService = Depends(get_project_service),
-    team_service: TeamService = Depends(get_team_service),
-) -> Any:
-    """
-    Сохранение данных графа проекта (автосохранение)
-
-    - Требует членства в проекте
-    - Сохраняет позиции узлов и связи
-
-    """
-    try:
-        project = await find_project_by_slug(
-            project_slug, project_service, team_service, current_user
-        )
-        # Check if user is a member of the project OR the team that owns the project
-        is_project_member = project_service.is_member(current_user, project)
-        team = team_service.get_team_by_id(project.team_id)
-        is_team_member = team and team_service.is_member(current_user, team)
-        if not (is_project_member or is_team_member):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail='You are not a member of this project or its team',
-            )
-        # Convert Pydantic model to dict for storage
-        graph_dict = graph_data.model_dump(exclude_none=True)
-        # Update task positions from the graph nodes
-        nodes = graph_dict.get('nodes', [])
-        for node in nodes:
-            task_id = node.get('id')
-            position = node.get('position', {})
-            if task_id and isinstance(task_id, (int, str)):
-                try:
-                    task = Task.get_by_id(int(task_id))
-                    if task.project_id == project.id:
-                        task.position_x = position.get('x', task.position_x)
-                        task.position_y = position.get('y', task.position_y)
-                        task.save()
-                except (Task.DoesNotExist, ValueError):
-                    logger.warning(f'Task {task_id} not found or invalid')
-        project = project_service.save_graph_data(project, graph_dict, current_user)
-        return {'message': 'Graph saved successfully'}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f'Error saving project graph: {e}', exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )

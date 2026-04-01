@@ -20,9 +20,9 @@ User → Team → Project → Task → Dependency → Action
 5. **AuthLog** - логирование аутентификации
 
 ### Ключевые правила:
-- `UserRole` не имеет отношения к проектам/командам - это глобальный статус
-- Telegram верификация через 6-значный код, 5 попыток, 10 минут жизни
-- Сессии: access token 1 час, refresh token 7 дней
+- `UserRole` не имеет отношения к проектам/командам — это глобальный статус
+- Подтверждение email: 6-значный код, лимит попыток и срок жизни кода (поля `email_code`, `email_code_expires`, `email_code_attempts`), флаг `email_verified`
+- Сессии: access token ~30 мин, refresh token 7 дней (см. `core/config.py`)
 - У пользователя может быть много команд и много проектов
 
 ---

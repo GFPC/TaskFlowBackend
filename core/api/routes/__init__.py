@@ -5,7 +5,6 @@ from .projects import router as projects_router  # добавлено
 from .roles import router as roles_router
 from .tasks import router as tasks_router
 from .teams import router as teams_router
-from .telegram import router as telegram_router
 from .users import router as users_router
 
 __all__ = [
@@ -13,7 +12,6 @@ __all__ = [
     'users_router',
     'admin_router',
     'roles_router',
-    'telegram_router',
     'teams_router',
     'projects_router',
     'tasks_router',
