@@ -1,5 +1,6 @@
 # main.py
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +12,21 @@ logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from core.services.email_queue import get_email_manager
+
+    get_email_manager().start()
+    yield
+    get_email_manager().stop()
+
+
 app = FastAPI(
     title='TaskFlow API',
     description='TaskFlow - система мониторинга задач и управления ими',
     version='1.0.0',
+    lifespan=lifespan,
 )
 
 # CORS

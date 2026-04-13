@@ -68,6 +68,10 @@ class Settings:
     SMTP_USE_STARTTLS = _smtp_starttls
     SMTP_USE_TLS = _smtp_starttls  # устаревший алиас
     SMTP_USE_SSL = os.getenv('SMTP_USE_SSL', 'false').lower() == 'true'
+    # Секунды на connect + команды SMTP (при таймауте проверьте файрвол и порт)
+    SMTP_TIMEOUT = int(os.getenv('SMTP_TIMEOUT', '60'))
+    # Переподключение при простое (серверы часто рвут долгое idle-соединение)
+    SMTP_IDLE_MAX_SEC = int(os.getenv('SMTP_IDLE_MAX_SEC', '300'))
     EMAIL_CODE_EXPIRY_MINUTES = int(os.getenv('EMAIL_CODE_EXPIRY_MINUTES', '10'))
 
     # Security

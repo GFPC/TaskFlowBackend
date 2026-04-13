@@ -350,26 +350,37 @@ class UserService:
             raise ValueError('User not found')
 
     def send_verification_email(self, user: User, code: str) -> bool:
-        """Отправка кода на email пользователя (SMTP)."""
+        """Ставит отправку кода в очередь (фон); не ждёт SMTP/HTTP."""
         from ..config import settings
 
-        from .email_service import build_verification_email_body, send_email_sync
+        from .email_service import (
+            build_verification_email_body,
+            send_email_in_thread,
+        )
 
         if not user.email:
+            return False
+        if not settings.RESEND_API_KEY and not settings.SMTP_HOST:
             return False
         subject = 'Код подтверждения TaskFlow'
         body = build_verification_email_body(code)
-        return send_email_sync(user.email, subject, body)
+        send_email_in_thread(user.email, subject, body)
+        return True
 
     def send_recovery_email(self, user: User, code: str) -> bool:
-        """Отправка кода восстановления пароля на email."""
-        from .email_service import build_recovery_email_body, send_email_sync
+        """Ставит отправку кода восстановления в очередь (фон)."""
+        from ..config import settings
+
+        from .email_service import build_recovery_email_body, send_email_in_thread
 
         if not user.email:
             return False
+        if not settings.RESEND_API_KEY and not settings.SMTP_HOST:
+            return False
         subject = 'Восстановление пароля TaskFlow'
         body = build_recovery_email_body(code)
-        return send_email_sync(user.email, subject, body)
+        send_email_in_thread(user.email, subject, body)
+        return True
 
     def refresh_session(self, refresh_token: str) -> Dict[str, Any]:
         """

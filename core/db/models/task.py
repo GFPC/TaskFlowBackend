@@ -345,7 +345,13 @@ class ScheduledAction(BaseModel):
             return None
 
         notify_time = task.deadline - timedelta(hours=hours_before)
-        if notify_time < datetime.now():
+        # Согласовать naive/aware: иначе TypeError при сравнении с datetime.now()
+        now = (
+            datetime.now(task.deadline.tzinfo)
+            if task.deadline.tzinfo
+            else datetime.now()
+        )
+        if notify_time < now:
             return None
 
         return cls.create(
