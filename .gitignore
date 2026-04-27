@@ -10,4 +10,5 @@ taskflow.egg-info
 Thumbs.db
 joined.txt
 *.db
+*.db-journal
 *.sqlite
