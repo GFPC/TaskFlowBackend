@@ -777,103 +777,10 @@ class TestProjectQueries:
             role_name='developer',
             added_by=team_owner,
         )
+
         projects = project_service.get_user_projects(team_member)
         assert len(projects) == 1
         assert projects[0].id == test_project.id
-
-    def test_get_user_projects_includes_team_projects(
-        self, project_service, test_project, test_team, team_member
-    ):
-        """Тест, что пользователь видит проекты из команд, где он является участником"""
-        # team_member является участником test_team (через fixture)
-        # test_project создан в test_team
-        # team_member НЕ является прямым участником проекта (не добавлен через add_member)
-        projects = project_service.get_user_projects(team_member)
-        # Должен видеть проект из своей команды
-        assert len(projects) == 1
-        assert projects[0].id == test_project.id
-
-    def test_get_user_projects_no_duplicates_when_both_team_and_direct_member(
-        self, project_service, test_project, team_owner, team_member
-    ):
-        """Тест, что проекты не дублируются, если пользователь одновременно участник команды и прямой участник проекта"""
-        # team_member является участником test_team (команды проекта)
-        # Добавляем team_member как прямого участника проекта
-        project_service.add_member(
-            project=test_project,
-            user=team_member,
-            role_name='developer',
-            added_by=team_owner,
-        )
-        projects = project_service.get_user_projects(team_member)
-        # Должен видеть проект только один раз (не дублируется)
-        assert len(projects) == 1
-        assert projects[0].id == test_project.id
-
-    def test_get_user_projects_includes_multiple_team_projects(
-        self,
-        project_service,
-        team_service,
-        test_team,
-        team_owner,
-        team_member,
-        second_user,
-    ):
-        """Тест, что пользователь видит проекты из нескольких команд"""
-        # Создаем проект в первой команде (test_team)
-        first_project = project_service.create_project(
-            team=test_team,
-            name='First Project',
-            created_by=team_owner,
-            description='First project',
-        )['project']
-        # Создаем вторую команду и добавляем team_member в нее
-        second_team = team_service.create_team(
-            name='Second Team', owner=second_user, description='Second team'
-        )['team']
-        team_service.add_member(
-            team=second_team,
-            user=team_member,
-            role_name='member',
-            created_by=second_user,
-        )
-        # Создаем проект во второй команде
-        second_project = project_service.create_project(
-            team=second_team,
-            name='Second Project',
-            created_by=second_user,
-            description='Second project',
-        )['project']
-        projects = project_service.get_user_projects(team_member)
-        # Должен видеть проекты из обеих команд
-        project_ids = [p.id for p in projects]
-        assert first_project.id in project_ids
-        assert second_project.id in project_ids
-        assert len(projects) == 2
-
-    def test_get_user_projects_excludes_archived_by_default(
-        self, project_service, test_project, test_team, team_owner, team_member
-    ):
-        """Тест, что по умолчанию не показываются архивированные проекты"""
-        # team_member является участником test_team
-        # Архивируем проект
-        project_service.archive_project(test_project, team_owner)
-        projects = project_service.get_user_projects(team_member)
-        # Не должен видеть архивированный проект
-        assert len(projects) == 0
-
-    def test_get_user_projects_includes_archived_when_requested(
-        self, project_service, test_project, test_team, team_owner, team_member
-    ):
-        """Тест, что архивированные проекты показываются при include_archived=True"""
-        # team_member является участником test_team
-        # Архивируем проект
-        project_service.archive_project(test_project, team_owner)
-        projects = project_service.get_user_projects(team_member, include_archived=True)
-        # Должен видеть архивированный проект
-        assert len(projects) == 1
-        assert projects[0].id == test_project.id
-        assert projects[0].status == 'archived'
 
     def test_get_project_members(self, project_service, test_project, team_owner):
         members = project_service.get_project_members(test_project)

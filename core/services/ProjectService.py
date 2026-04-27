@@ -100,52 +100,33 @@ class ProjectService:
         initial_graph_data: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-
         Создание нового проекта в команде
-
         """
-
         # Проверяем права на создание проекта в команде
-
         from .TeamService import TeamService
 
         team_service = TeamService()
-
         if not team_service.can_manage_projects(created_by, team):
             raise PermissionError(
                 "You don't have permission to create projects in this team"
             )
 
         # Валидация
-
         valid, error = self._validate_project_name(name)
-
         if not valid:
             raise ValueError(f'Invalid project name: {error}')
 
         # Генерация slug
-
         base_slug = self._generate_slug(name)
-
         slug = self._get_unique_slug(base_slug, team.id)
 
         # Получаем роль владельца проекта
-
         owner_role = self.get_role_by_name('owner')
-
         if not owner_role:
             roles = self.ensure_default_roles()
-
             owner_role = roles['owner']
 
-        # Получаем роль разработчика по умолчанию для остальных участников команды
-        developer_role = self.get_role_by_name('developer')
-        if not developer_role:
-            roles = self.ensure_default_roles()
-            developer_role = roles['developer']
-
         # Создаем проект
-
         project = self.project_model.create(
             name=name.strip(),
             slug=slug,
@@ -162,16 +143,7 @@ class ProjectService:
             ),
         )
 
-        # Получаем всех активных участников команды
-
-        from ..db.models.team import TeamMember
-
-        team_members = TeamMember.select().where(
-            (TeamMember.team == team) & (TeamMember.is_active == True)
-        )
-
         # Добавляем создателя как владельца проекта
-
         member = self.member_model.create(
             project=project,
             user=created_by,
@@ -180,23 +152,9 @@ class ProjectService:
             is_active=True,
         )
 
-        # Добавляем остальных участников команды в проект с ролью developer
-        added_count = 1  # Уже добавили создателя
-        for team_member in team_members:
-            if team_member.user.id != created_by.id:  # Не добавляем создателя повторно
-                self.member_model.create(
-                    project=project,
-                    user=team_member.user,
-                    role=developer_role,
-                    created_by=created_by,
-                    is_active=True,
-                )
-                added_count += 1
-
         # Обновляем счетчики
-        project.members_count = added_count
+        project.members_count = 1
         project.tasks_count = 0
-
         project.save()
 
         return {'project': project, 'member': member}
@@ -479,30 +437,17 @@ class ProjectService:
         self, user: User, include_archived: bool = False
     ) -> List[Project]:
         """
-        Получение всех проектов пользователя (личные + из команд)
+        Получение всех проектов пользователя
         """
-        # 1. Получаем проекты, где пользователь прямой участник
-        direct_projects_query = self.member_model.select().where(
+        query = self.member_model.select().where(
             (self.member_model.user == user) & (self.member_model.is_active == True)
         )
+
         projects = []
-        project_ids = set()
-        for member in direct_projects_query:
+        for member in query:
             if include_archived or member.project.status == 'active':
                 projects.append(member.project)
-                project_ids.add(member.project.id)
-        # 2. Получаем все команды, где пользователь является участником
-        team_members = TeamMember.select().where(
-            (TeamMember.user == user) & (TeamMember.is_active == True)
-        )
-        # 3. Для каждой команды получаем проекты (учитывая статус)
-        for team_member in team_members:
-            team = team_member.team
-            for project in team.projects:
-                if project.id not in project_ids:
-                    if include_archived or project.status == 'active':
-                        projects.append(project)
-                        project_ids.add(project.id)
+
         return projects
 
     def get_user_invitations(self, user: User) -> List[ProjectInvitation]:
