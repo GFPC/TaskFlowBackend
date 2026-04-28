@@ -180,29 +180,39 @@ class ProjectService:
         if not team_service.is_member(user, project.team):
             raise ValueError('User must be a team member to be added to project')
 
-        # Проверяем, не участник ли уже
+        # Проверяем, не участник ли уже (активный или неактивный)
         existing = (
             self.member_model.select()
             .where(
                 (self.member_model.project == project)
                 & (self.member_model.user == user)
-                & (self.member_model.is_active == True)
             )
             .first()
         )
-
-        if existing:
-            raise ValueError('User is already a member of this project')
 
         # Получаем роль
         role = self.get_role_by_name(role_name)
         if not role:
             raise ValueError(f"Role '{role_name}' not found")
 
-        # Добавляем участника
-        member = self.member_model.create(
-            project=project, user=user, role=role, created_by=added_by, is_active=True
-        )
+        if existing:
+            # Если участник существует, активируем его заново
+            existing.role = role
+            existing.created_by = added_by
+            existing.is_active = True
+            existing.left_at = None
+            existing.joined_at = datetime.now()
+            existing.save()
+            member = existing
+        else:
+            # Добавляем нового участника
+            member = self.member_model.create(
+                project=project,
+                user=user,
+                role=role,
+                created_by=added_by,
+                is_active=True,
+            )
 
         # Обновляем счетчик
         project.members_count = (
