@@ -21,10 +21,13 @@ from ..deps import (
 )
 from ..schemas.project import ProjectGraphData
 from ..schemas.task import (
+    DependencyActionCreate,
+    DependencyActionResponse,
     ProjectGraphResponse,
     TaskCreate,
     TaskDependencyCreate,
     TaskDependencyResponse,
+    TaskDependencyUpdate,
     TaskDetailResponse,
     TaskEventResponse,
     TaskResponse,
@@ -39,6 +42,69 @@ router = APIRouter(prefix='/projects/{project_slug}/tasks', tags=['tasks'])
 
 
 # ==================== ХЕЛПЕРЫ ====================
+
+
+def task_response_with_readiness(task: Task, task_service: TaskService) -> TaskResponse:
+    """Сериализация задачи с производными полями готовности."""
+    task_data = TaskResponse.model_validate(task)
+    readiness = task_service.get_readiness_info(task)
+    task_data.is_ready = readiness['is_ready']
+    task_data.blocking_task_ids = readiness['blocking_task_ids']
+    task_data.blocked_reason = readiness['blocked_reason']
+    return task_data
+
+
+def dependency_error_response(error: ValueError) -> HTTPException:
+    """Стабильные error_code для конфликтов зависимостей."""
+    message = str(error)
+    if 'cycle' in message.lower():
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'error_code': 'DEPENDENCY_CYCLE',
+                'message': message,
+            },
+        )
+    if message.startswith('TASK_NOT_READY'):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'error_code': 'TASK_NOT_READY',
+                'message': message,
+            },
+        )
+    if message.startswith('UNKNOWN_ACTION_TYPE'):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'error_code': 'UNKNOWN_ACTION_TYPE',
+                'message': message,
+            },
+        )
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
+def forbidden_response(error_code: str, message: str) -> HTTPException:
+    """Стабильный формат 403 для фронта."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={'error_code': error_code, 'message': message},
+    )
+
+
+def permission_error_response(error: PermissionError) -> HTTPException:
+    """Маппинг PermissionError сервисов в стабильные коды."""
+    message = str(error)
+    lowered = message.lower()
+    if 'task graph' in lowered or 'dependencies' in lowered:
+        return forbidden_response('task_graph_forbidden', message)
+    if 'status' in lowered:
+        return forbidden_response('task_status_forbidden', message)
+    if 'delete' in lowered:
+        return forbidden_response('task_delete_forbidden', message)
+    if 'create' in lowered:
+        return forbidden_response('task_create_forbidden', message)
+    return forbidden_response('task_field_edit_forbidden', message)
 
 
 async def get_project_by_slug(
@@ -100,13 +166,10 @@ async def save_project_graph(
         project = await get_project_by_slug(
             project_slug, project_service, team_service, current_user
         )
-        is_project_member = project_service.is_member(current_user, project)
-        team = team_service.get_team_by_id(project.team_id)
-        is_team_member = team and team_service.is_member(current_user, team)
-        if not (is_project_member or is_team_member):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail='You are not a member of this project or its team',
+        if not project_service.can_manage_task_graph(current_user, project):
+            raise forbidden_response(
+                'task_graph_forbidden',
+                "You don't have permission to save this task graph",
             )
         graph_dict = graph_data.model_dump(exclude_none=True)
         nodes = graph_dict.get('nodes', [])
@@ -126,6 +189,8 @@ async def save_project_graph(
         return {'message': 'Graph saved successfully'}
     except HTTPException:
         raise
+    except PermissionError as e:
+        raise permission_error_response(e)
     except Exception as e:
         logger.error('Error saving project graph: %s', e, exc_info=True)
         raise HTTPException(
@@ -211,7 +276,135 @@ async def delete_dependency(
             status_code=status.HTTP_404_NOT_FOUND, detail='Dependency not found'
         )
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise permission_error_response(e)
+
+
+@router.patch('/dependencies/{dependency_id}', response_model=TaskDependencyResponse)
+async def update_dependency(
+    project_slug: str,
+    dependency_id: int,
+    dependency_in: TaskDependencyUpdate,
+    current_user: User = Depends(get_current_active_user),
+    task_service: TaskService = Depends(get_task_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+) -> Any:
+    """Обновление типа или описания зависимости без пересоздания ребра."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        dependency = task_service.dependency_model.get_by_id(dependency_id)
+
+        if dependency.project_id != project.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='Dependency not found in this project',
+            )
+
+        updated = task_service.update_dependency(
+            dependency=dependency,
+            updated_by=current_user,
+            dependency_type=dependency_in.dependency_type,
+            description=dependency_in.description,
+        )
+        return TaskDependencyResponse.model_validate(updated)
+    except task_service.dependency_model.DoesNotExist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail='Dependency not found'
+        )
+    except PermissionError as e:
+        raise permission_error_response(e)
+    except ValueError as e:
+        raise dependency_error_response(e)
+
+
+@router.post(
+    '/dependencies/{dependency_id}/actions', response_model=DependencyActionResponse
+)
+async def add_dependency_action(
+    project_slug: str,
+    dependency_id: int,
+    action_in: DependencyActionCreate,
+    current_user: User = Depends(get_current_active_user),
+    task_service: TaskService = Depends(get_task_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+    user_service: UserService = Depends(get_user_service),
+) -> Any:
+    """Добавление действия на зависимость."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        dependency = task_service.dependency_model.get_by_id(dependency_id)
+        if dependency.project_id != project.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='Dependency not found in this project',
+            )
+
+        target_user = None
+        if action_in.target_user_username:
+            target_user = user_service.get_user_by_username(
+                action_in.target_user_username
+            )
+            if not target_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"User '{action_in.target_user_username}' not found",
+                )
+
+        action = task_service.add_dependency_action(
+            dependency=dependency,
+            action_type_code=action_in.action_type_code,
+            created_by=current_user,
+            target_user=target_user,
+            target_status_name=action_in.target_status,
+            message_template=action_in.message_template,
+            delay_minutes=action_in.delay_minutes,
+            execute_order=action_in.execute_order,
+        )
+        return DependencyActionResponse.model_validate(action)
+    except task_service.dependency_model.DoesNotExist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail='Dependency not found'
+        )
+    except PermissionError as e:
+        raise permission_error_response(e)
+    except ValueError as e:
+        raise dependency_error_response(e)
+
+
+@router.delete('/dependencies/actions/{action_id}')
+async def remove_dependency_action(
+    project_slug: str,
+    action_id: int,
+    current_user: User = Depends(get_current_active_user),
+    task_service: TaskService = Depends(get_task_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+) -> Any:
+    """Мягкое удаление действия с зависимости."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        action = task_service.action_model.get_by_id(action_id)
+        if action.dependency.project_id != project.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='Action not found in this project',
+            )
+
+        task_service.remove_dependency_action(action, current_user)
+        return {'message': 'Action successfully removed'}
+    except task_service.action_model.DoesNotExist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail='Action not found'
+        )
+    except PermissionError as e:
+        raise permission_error_response(e)
 
 
 # ==================== ОСНОВНЫЕ ОПЕРАЦИИ С ЗАДАЧАМИ ====================
@@ -230,7 +423,7 @@ async def create_task(
     """
     Создание новой задачи в проекте
 
-    - Требует прав на создание задач (все кроме observer)
+    - Требует прав owner/manager
     """
     logger.info(f'Creating task in project {project_slug}')
 
@@ -241,9 +434,9 @@ async def create_task(
         )
 
         if not project_service.can_create_tasks(current_user, project):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to create tasks in this project",
+            raise forbidden_response(
+                'task_create_forbidden',
+                "You don't have permission to create tasks in this project",
             )
 
         # 2. Находим исполнителя, если указан
@@ -270,9 +463,11 @@ async def create_task(
             metadata=task_in.metadata,
         )
 
-        return TaskResponse.model_validate(result['task'])
+        return task_response_with_readiness(result['task'], task_service)
     except HTTPException:
         raise
+    except PermissionError as e:
+        raise permission_error_response(e)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -333,9 +528,7 @@ async def get_project_tasks(
     # 4. Добавляем флаг is_ready
     result = []
     for task in tasks:
-        task_data = TaskResponse.model_validate(task)
-        task_data.is_ready = task_service.check_task_readiness(task)
-        result.append(task_data)
+        result.append(task_response_with_readiness(task, task_service))
 
     return result
 
@@ -361,13 +554,19 @@ async def get_task_by_id(
     dependencies = task_service.get_task_dependencies(task)
 
     task_data = TaskDetailResponse.model_validate(task)
-    # ВАЖНО: вычисляем is_ready!
-    task_data.is_ready = task_service.check_task_readiness(task)
+    readiness = task_service.get_readiness_info(task)
+    task_data.is_ready = readiness['is_ready']
+    task_data.blocking_task_ids = readiness['blocking_task_ids']
+    task_data.blocked_reason = readiness['blocked_reason']
     task_data.incoming_dependencies = [
         TaskDependencyResponse.model_validate(dep) for dep in dependencies['incoming']
     ]
     task_data.outgoing_dependencies = [
         TaskDependencyResponse.model_validate(dep) for dep in dependencies['outgoing']
+    ]
+    task_data.events = [
+        TaskEventResponse.model_validate(event)
+        for event in task.events.order_by(task_service.event_model.created_at.desc()).limit(50)
     ]
 
     return task_data
@@ -396,15 +595,11 @@ async def update_task(
         if not task:
             raise HTTPException(status_code=404, detail='Task not found')
 
-        # ПРОВЕРКА: Developer может менять только статус, не название!
-        role = project_service.get_user_role_in_project(current_user, project)
-        if role and role.name == 'developer':
-            # Developer не может менять название задачи
-            if task_in.name is not None and task_in.name != task.name:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail='Developer cannot change task name',
-                )
+        if not project_service.can_edit_task(current_user, task):
+            raise forbidden_response(
+                'task_field_edit_forbidden',
+                "You don't have permission to edit task fields",
+            )
 
         # 3. Находим нового исполнителя, если указан
         assignee = None
@@ -430,12 +625,12 @@ async def update_task(
             metadata=task_in.metadata,
         )
 
-        return TaskResponse.model_validate(updated_task)
+        return task_response_with_readiness(updated_task, task_service)
 
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise permission_error_response(e)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise dependency_error_response(e)
 
 
 @router.delete('/{task_id}')
@@ -450,7 +645,7 @@ async def delete_task(
     """
     Удаление задачи
 
-    - Требует прав на удаление задачи (owner/manager или создатель)
+    - Требует прав owner/manager
     """
     logger.info(f'Deleting task {task_id} from project {project_slug}')
 
@@ -469,9 +664,9 @@ async def delete_task(
 
         # 3. Проверяем права через ProjectService
         if not project_service.can_delete_task(current_user, task):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this task",
+            raise forbidden_response(
+                'task_delete_forbidden',
+                "You don't have permission to delete this task",
             )
 
         # 4. Удаляем задачу
@@ -501,7 +696,7 @@ async def change_task_status(
     """
     Изменение статуса задачи
 
-    - Требует прав на редактирование задачи
+    - Требует членства в проекте
     - При завершении задачи выполняются действия на исходящих ребрах
     """
     logger.info(f'Changing task {task_id} status to {status_update.status}')
@@ -525,16 +720,17 @@ async def change_task_status(
         )
 
         return {
-            'task': TaskResponse.model_validate(result['task']),
+            'task': task_response_with_readiness(result['task'], task_service),
             'status_changed': result['status_changed'],
             'old_status': result['old_status'].name,
             'new_status': result['new_status'].name,
+            'actions_executed': result.get('actions_executed', []),
         }
 
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise permission_error_response(e)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise dependency_error_response(e)
 
 
 # ==================== УПРАВЛЕНИЕ ЗАВИСИМОСТЯМИ ====================
@@ -598,6 +794,7 @@ async def create_dependency(
     Создание зависимости от текущей задачи к целевой
 
     - Требует прав на создание зависимостей
+    - Требует прав owner/manager
     - Проверяет на циклические зависимости
     """
     logger.info(
@@ -636,9 +833,9 @@ async def create_dependency(
         return TaskDependencyResponse.model_validate(dependency)
 
     except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise permission_error_response(e)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise dependency_error_response(e)
 
 
 # ==================== СОБЫТИЯ ====================

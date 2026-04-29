@@ -156,6 +156,10 @@ class ProjectService:
         project.members_count = 1
         project.tasks_count = 0
         project.save()
+        team.projects_count = self.project_model.select().where(
+            (self.project_model.team == team) & (self.project_model.status != 'deleted')
+        ).count()
+        team.save()
 
         return {'project': project, 'member': member}
 
@@ -564,6 +568,11 @@ class ProjectService:
             return False
         return role.can_delete_project
 
+    def can_manage_tasks(self, user: User, project: Project) -> bool:
+        """Полные мутации задач и графа: только owner/manager."""
+        role = self.get_user_role_in_project(user, project)
+        return bool(role and role.name in ('owner', 'manager'))
+
     def can_create_tasks(self, user: User, project: Project) -> bool:
         """
         Может ли пользователь создавать задачи в проекте
@@ -574,80 +583,42 @@ class ProjectService:
             return False
 
         logger.info(
-            f'User {user.username} role: {role.name}, can_create_tasks: {role.can_create_tasks}'
+            f'User {user.username} role: {role.name}, can_create_tasks: {role.name in ("owner", "manager")}'
         )
 
-        # Если роль не имеет права - возвращаем False, НЕ ВЫБРАСЫВАЕМ ИСКЛЮЧЕНИЕ!
-        if not role.can_create_tasks:
-            return False
-
-        return True
+        return role.name in ('owner', 'manager')
 
     def can_edit_task(self, user: User, task) -> bool:
         """
         Может ли пользователь редактировать конкретную задачу
 
-        - owner/manager: могут редактировать любые задачи (все поля)
-        - developer: может редактировать ТОЛЬКО статус задачи, НО НЕ название!
+        - owner/manager: могут редактировать любые поля задачи
+        - developer/observer: не могут редактировать поля задачи; статус меняется отдельно
         """
-        role = self.get_user_role_in_project(user, task.project)
-        if not role:
-            return False
+        return self.can_manage_tasks(user, task.project)
 
-        # Owner/Manager могут редактировать любые задачи
-        if role.can_edit_any_task:
-            return True
-
-        # Developer может редактировать только свои задачи
-        if role.can_edit_own_task:
-            # Проверяем, является ли пользователь создателем или исполнителем
-            is_creator = task.creator_id == user.id
-            is_assignee = task.assignee_id == user.id
-
-            # ВАЖНО: Developer может менять только статус, но не название!
-            # Эта логика должна быть в эндпоинте, а не здесь
-            return is_creator or is_assignee
-
-        return False
+    def can_change_task_status(self, user: User, task) -> bool:
+        """Смена статуса разрешена всем активным участникам проекта."""
+        return self.is_member(user, task.project)
 
     def can_delete_task(self, user: User, task) -> bool:
         """
         Может ли пользователь удалить задачу
 
         - owner/manager: могут удалять любые задачи
-        - developer: может удалять ТОЛЬКО свои задачи (созданные им)
+        - developer/observer: не могут удалять задачи
         """
-        role = self.get_user_role_in_project(user, task.project)
-        if not role:
-            return False
+        return self.can_manage_tasks(user, task.project)
 
-        # Owner/Manager могут удалять любые задачи
-        if role.can_delete_any_task:
-            return True
-
-        # Developer может удалять только свои задачи
-        if role.can_delete_own_task:
-            return task.creator_id == user.id
-
-        return False
+    def can_manage_task_graph(self, user: User, project: Project) -> bool:
+        """Мутации графа задач: layout, зависимости, actions."""
+        return self.can_manage_tasks(user, project)
 
     def can_create_dependencies(self, user: User, task) -> bool:
         """
         Может ли пользователь создавать зависимости для задачи
         """
-        role = self.get_user_role_in_project(user, task.project)
-        if not role:
-            return False
-
-        # Owner/Manager могут создавать любые зависимости
-        if role.can_create_dependencies and role.can_edit_any_task:
-            return True
-
-        # Developer может создавать зависимости, если задача его
-        if role.can_create_dependencies:
-            return task.creator.id == user.id or task.assignee.id == user.id
-
-        return False
+        return self.can_manage_task_graph(user, task.project)
 
     # ------------------- Управление проектом -------------------
 
@@ -691,9 +662,8 @@ class ProjectService:
         """
         Сохранение данных графа
         """
-        # Все участники могут сохранять граф (они же работают с задачами)
-        if not self.is_member(saved_by, project):
-            raise PermissionError("You don't have permission to edit this project")
+        if not self.can_manage_task_graph(saved_by, project):
+            raise PermissionError("You don't have permission to manage task graph")
 
         project.graph_data = json.dumps(graph_data)
         project.save()
@@ -712,6 +682,11 @@ class ProjectService:
         project.status = 'archived'
         project.archived_at = datetime.now()
         project.save()
+        project.team.projects_count = self.project_model.select().where(
+            (self.project_model.team == project.team)
+            & (self.project_model.status != 'deleted')
+        ).count()
+        project.team.save()
 
         # Логируем событие (если есть)
         # from ..models.task import TaskEvent
@@ -728,6 +703,11 @@ class ProjectService:
 
         project.status = 'deleted'
         project.save()
+        project.team.projects_count = self.project_model.select().where(
+            (self.project_model.team == project.team)
+            & (self.project_model.status != 'deleted')
+        ).count()
+        project.team.save()
 
         # Деактивируем всех участников
         self.member_model.update(is_active=False, left_at=datetime.now()).where(

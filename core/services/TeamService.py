@@ -535,7 +535,7 @@ class TeamService:
         if active_only:
             query = query.where(self.member_model.is_active == True)
 
-        return [member.team for member in query]
+        return [self.sync_projects_count(member.team) for member in query]
 
     def get_team_members(
         self, team: Team, include_inactive: bool = False
@@ -573,12 +573,39 @@ class TeamService:
         Получение команды по slug
         """
         try:
-            return self.team_model.get(
+            team = self.team_model.get(
                 self.team_model.slug == slug
                 # У Team нет поля status
             )
+            return self.sync_projects_count(team)
         except self.team_model.DoesNotExist:
             return None
+
+    def get_projects_count(self, team: Team, include_archived: bool = True) -> int:
+        """Актуальное количество проектов команды.
+
+        Совпадает с пользовательским списком проектов при include_archived=True:
+        активные и архивные считаются, мягко удаленные нет.
+        """
+        try:
+            from ..db.models.project import Project
+
+            query = Project.select().where(Project.team == team)
+            if include_archived:
+                query = query.where(Project.status != 'deleted')
+            else:
+                query = query.where(Project.status == 'active')
+            return query.count()
+        except Exception:
+            return team.projects_count
+
+    def sync_projects_count(self, team: Team) -> Team:
+        """Обновить кешированное поле projects_count перед сериализацией."""
+        actual_count = self.get_projects_count(team, include_archived=True)
+        if team.projects_count != actual_count:
+            team.projects_count = actual_count
+            team.save()
+        return team
 
     def get_team_invitations(
         self, team: Team, status: Optional[str] = 'pending'
@@ -705,7 +732,10 @@ class TeamService:
         if conditions:
             query = query.where(*conditions)
 
-        return list(query.order_by(self.team_model.name).limit(limit).offset(offset))
+        return [
+            self.sync_projects_count(team)
+            for team in query.order_by(self.team_model.name).limit(limit).offset(offset)
+        ]
 
     def get_team_stats(self, team: Team) -> Dict[str, Any]:
         """
@@ -734,18 +764,7 @@ class TeamService:
             if count > 0:
                 role_stats[role.name] = count
 
-        # Количество проектов - опционально, если нет таблицы projects, не используем
-        projects_count = 0
-        try:
-            from ..db.models.project import Project
-
-            projects_count = Project.select().where(Project.team == team).count()
-        except ImportError:
-            # Модель Project не доступна
-            pass
-        except Exception:
-            # Таблица projects не существует
-            pass
+        projects_count = self.get_projects_count(team, include_archived=True)
 
         # Активные приглашения
         pending_invites = (

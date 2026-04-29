@@ -836,6 +836,14 @@ async def get_project_by_slug(
                 current_user, project
             ),
             'can_create_tasks': project_service.can_create_tasks(current_user, project),
+            'can_edit_tasks': project_service.can_manage_tasks(current_user, project),
+            'can_delete_tasks': project_service.can_manage_tasks(current_user, project),
+            'can_change_task_status': project_service.is_member(
+                current_user, project
+            ),
+            'can_manage_task_graph': project_service.can_manage_task_graph(
+                current_user, project
+            ),
             'settings': project.settings_dict,
         }
 

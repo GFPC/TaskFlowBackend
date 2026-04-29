@@ -1,6 +1,7 @@
 # core/api/routes/__init__.py
 from .admin import router as admin_router
 from .auth import router as auth_router
+from .meta import router as meta_router
 from .projects import router as projects_router  # добавлено
 from .roles import router as roles_router
 from .tasks import router as tasks_router
@@ -12,6 +13,7 @@ __all__ = [
     'users_router',
     'admin_router',
     'roles_router',
+    'meta_router',
     'teams_router',
     'projects_router',
     'tasks_router',

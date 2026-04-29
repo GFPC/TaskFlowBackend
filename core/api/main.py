@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from .routes import (
     admin_router,
     auth_router,
+    meta_router,
     projects_router,  # было projects
     roles_router,
     tasks_router,  # было tasks
@@ -17,6 +18,7 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(admin_router)
 api_router.include_router(roles_router)
+api_router.include_router(meta_router)
 api_router.include_router(teams_router)  # было teams.router
 api_router.include_router(projects_router)  # было projects.router
 api_router.include_router(tasks_router)  # было tasks.router

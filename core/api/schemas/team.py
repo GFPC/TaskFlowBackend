@@ -43,6 +43,37 @@ class TeamResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode='before')
+    @classmethod
+    def validate_team(cls, data):
+        """Преобразует Team и подставляет актуальный projects_count."""
+        if hasattr(data, '__dict__'):
+            projects_count = data.projects_count
+            try:
+                from ...db.models.project import Project
+
+                projects_count = (
+                    Project.select()
+                    .where((Project.team == data) & (Project.status != 'deleted'))
+                    .count()
+                )
+            except Exception:
+                pass
+
+            return {
+                'id': data.id,
+                'name': data.name,
+                'slug': data.slug,
+                'description': data.description,
+                'avatar': data.avatar,
+                'owner_id': data.owner_id,
+                'members_count': data.members_count,
+                'projects_count': projects_count,
+                'created_at': data.created_at,
+                'updated_at': data.updated_at,
+            }
+        return data
+
 
 class TeamDetailResponse(TeamResponse):
     """Детальная информация о команде"""

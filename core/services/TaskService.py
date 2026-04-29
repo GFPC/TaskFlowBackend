@@ -7,6 +7,8 @@ from peewee import logger
 
 from ..db.models.project import Project, ProjectMember
 from ..db.models.task import (
+    DependencyAction,
+    DependencyActionType,
     ScheduledAction,
     Task,
     TaskDependency,
@@ -22,10 +24,40 @@ from .UserService import UserService
 class TaskService:
     """Сервис для работы с задачами и графом зависимостей"""
 
+    DEPENDENCY_TYPES = {
+        'blocks': {
+            'name': 'Блокирует',
+            'description': 'Источник должен быть завершен до начала целевой задачи',
+            'is_blocking': True,
+        },
+        'simple': {
+            'name': 'Обычная зависимость',
+            'description': 'Совместимый исторический тип; участвует в блокировке',
+            'is_blocking': True,
+        },
+        'dependency': {
+            'name': 'Зависимость',
+            'description': 'Алиас блокирующей зависимости для старого фронта',
+            'is_blocking': True,
+        },
+        'soft': {
+            'name': 'Мягкая связь',
+            'description': 'Визуальная связь без влияния на готовность',
+            'is_blocking': False,
+        },
+        'relates_to': {
+            'name': 'Связана с',
+            'description': 'Информационная связь без блокировки',
+            'is_blocking': False,
+        },
+    }
+
     def __init__(self):
         self.task_model = Task
         self.status_model = TaskStatus
         self.dependency_model = TaskDependency
+        self.action_model = DependencyAction
+        self.action_type_model = DependencyActionType
         self.event_model = TaskEvent
         self.scheduled_model = ScheduledAction
 
@@ -40,6 +72,54 @@ class TaskService:
             )
             statuses[status.name] = status
         return statuses
+
+    def ensure_default_action_types(self) -> Dict[str, DependencyActionType]:
+        """Создание стандартных типов действий на зависимостях"""
+        action_types = {}
+        for action_data in self.action_type_model.get_default_types():
+            action_type, created = self.action_type_model.get_or_create(
+                code=action_data['code'], defaults=action_data
+            )
+            action_types[action_type.code] = action_type
+        return action_types
+
+    def get_graph_meta(self) -> Dict[str, Any]:
+        """Справочники для фронта по графу задач."""
+        self.ensure_default_statuses()
+        action_types = self.ensure_default_action_types()
+        return {
+            'edge_direction': 'A -> B means task A blocks or precedes task B',
+            'readiness': {
+                'ready_status': 'todo',
+                'final_source_statuses': [
+                    status.name
+                    for status in self.status_model.select().where(
+                        self.status_model.is_final == True
+                    )
+                ],
+                'blocked_error_code': 'TASK_NOT_READY',
+            },
+            'dependency_types': [
+                {'code': code, **meta}
+                for code, meta in self.DEPENDENCY_TYPES.items()
+            ],
+            'action_types': [
+                {
+                    'code': action_type.code,
+                    'name': action_type.name,
+                    'description': action_type.description,
+                    'requires_target_user': action_type.requires_target_user,
+                    'requires_template': action_type.requires_template,
+                    'supports_delay': action_type.supports_delay,
+                }
+                for action_type in action_types.values()
+            ],
+            'errors': {
+                'cycle': 'DEPENDENCY_CYCLE',
+                'task_not_ready': 'TASK_NOT_READY',
+                'unknown_action_type': 'UNKNOWN_ACTION_TYPE',
+            },
+        }
 
     def get_status_by_name(self, name: str) -> Optional[TaskStatus]:
         """Получение статуса по имени"""
@@ -239,8 +319,8 @@ class TaskService:
 
         project_service = ProjectService()
 
-        # Проверяем права
-        if not project_service.can_edit_task(changed_by, task):
+        # Проверяем отдельное право на смену статуса
+        if not project_service.can_change_task_status(changed_by, task):
             raise PermissionError(
                 "You don't have permission to change this task status"
             )
@@ -251,6 +331,12 @@ class TaskService:
 
         old_status = task.status
 
+        if new_status.name == 'in_progress' and not self.check_task_readiness(task):
+            blocking_task_ids = self.get_blocking_task_ids(task)
+            raise ValueError(
+                f"TASK_NOT_READY: Task is blocked by unfinished dependencies: {blocking_task_ids}"
+            )
+
         # Если статус не меняется - просто возвращаем успех
         if old_status.id == new_status.id:
             return {
@@ -258,6 +344,7 @@ class TaskService:
                 'status_changed': False,
                 'old_status': old_status,
                 'new_status': new_status,
+                'actions_executed': [],
             }
 
         # Меняем статус
@@ -281,13 +368,17 @@ class TaskService:
             'status_changed': True,
             'old_status': old_status,
             'new_status': new_status,
+            'actions_executed': [],
         }
 
         if new_status.is_final and not old_status.is_final:
             try:
-                self._refresh_downstream_readiness(task)
+                result['actions_executed'] = self._handle_task_completion(
+                    task, changed_by
+                )
             except Exception as e:
                 logger.error(f'Error handling task completion: {e}')
+            self._refresh_downstream_readiness(task)
 
         return result
 
@@ -318,8 +409,14 @@ class TaskService:
         if source_task.project_id != target_task.project_id:
             raise ValueError('Tasks must be in the same project')
 
-        # Проверяем на циклическую зависимость
-        if self.would_create_cycle(source_task, target_task):
+        if dependency_type not in self.DEPENDENCY_TYPES:
+            allowed = ', '.join(self.DEPENDENCY_TYPES.keys())
+            raise ValueError(f"Unknown dependency_type '{dependency_type}'. Allowed: {allowed}")
+
+        # Проверяем на циклическую зависимость для блокирующих типов
+        if self.is_blocking_dependency_type(dependency_type) and self.would_create_cycle(
+            source_task, target_task
+        ):
             raise ValueError('This dependency would create a cycle')
 
         # Проверяем, не существует ли уже такая зависимость
@@ -360,6 +457,46 @@ class TaskService:
 
         return dependency
 
+    def update_dependency(
+        self,
+        dependency: TaskDependency,
+        updated_by: User,
+        dependency_type: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> TaskDependency:
+        """Частичное обновление зависимости без пересоздания ребра."""
+        from .ProjectService import ProjectService
+
+        project_service = ProjectService()
+        if not project_service.can_manage_task_graph(updated_by, dependency.project):
+            raise PermissionError("You don't have permission to update dependencies")
+
+        if dependency_type is not None:
+            if dependency_type not in self.DEPENDENCY_TYPES:
+                allowed = ', '.join(self.DEPENDENCY_TYPES.keys())
+                raise ValueError(
+                    f"Unknown dependency_type '{dependency_type}'. Allowed: {allowed}"
+                )
+            if (
+                self.is_blocking_dependency_type(dependency_type)
+                and not self.is_blocking_dependency_type(dependency.dependency_type)
+                and self.would_create_cycle(dependency.source_task, dependency.target_task)
+            ):
+                raise ValueError('This dependency would create a cycle')
+            dependency.dependency_type = dependency_type
+
+        if description is not None:
+            dependency.description = description
+
+        dependency.save()
+        self.event_model.log(
+            task=dependency.source_task,
+            user=updated_by,
+            event_type='dependency_updated',
+            metadata={'dependency_id': dependency.id},
+        )
+        return dependency
+
     def delete_dependency(self, dependency: TaskDependency, deleted_by: User) -> bool:
         """
         Удаление зависимости
@@ -369,8 +506,7 @@ class TaskService:
         project_service = ProjectService()
 
         # Проверяем права (только менеджеры/владельцы могут удалять зависимости)
-        role = project_service.get_user_role_in_project(deleted_by, dependency.project)
-        if not role or not role.can_delete_dependencies:
+        if not project_service.can_manage_task_graph(deleted_by, dependency.project):
             raise PermissionError("You don't have permission to delete dependencies")
 
         # Логируем событие
@@ -403,6 +539,11 @@ class TaskService:
             deps = self.dependency_model.select().where(
                 (self.dependency_model.project == source.project)
                 & (self.dependency_model.source_task_id == task_id)
+                & (
+                    self.dependency_model.dependency_type.in_(
+                        self.get_blocking_dependency_types()
+                    )
+                )
             )
 
             for dep in deps:
@@ -432,6 +573,52 @@ class TaskService:
 
         return {'incoming': incoming, 'outgoing': outgoing}
 
+    def get_blocking_dependency_types(self) -> List[str]:
+        """Типы зависимостей, которые участвуют в расчете is_ready."""
+        return [
+            code
+            for code, meta in self.DEPENDENCY_TYPES.items()
+            if meta.get('is_blocking')
+        ]
+
+    def is_blocking_dependency_type(self, dependency_type: str) -> bool:
+        """Проверка, блокирует ли тип зависимости целевую задачу."""
+        return self.DEPENDENCY_TYPES.get(dependency_type, {}).get('is_blocking', False)
+
+    def get_blocking_task_ids(self, task: Task) -> List[int]:
+        """ID незавершенных задач, блокирующих указанную задачу."""
+        incoming = (
+            self.dependency_model.select()
+            .where(
+                (self.dependency_model.project == task.project)
+                & (self.dependency_model.target_task == task)
+                & (
+                    self.dependency_model.dependency_type.in_(
+                        self.get_blocking_dependency_types()
+                    )
+                )
+            )
+            .order_by(self.dependency_model.id)
+        )
+
+        blocking_task_ids = []
+        for dep in incoming:
+            if not dep.source_task.status.is_final:
+                blocking_task_ids.append(dep.source_task_id)
+        return blocking_task_ids
+
+    def get_readiness_info(self, task: Task) -> Dict[str, Any]:
+        """Готовность задачи и структурированная причина блокировки."""
+        blocking_task_ids = self.get_blocking_task_ids(task)
+        is_ready = task.status.name == 'todo' and not blocking_task_ids
+        return {
+            'is_ready': is_ready,
+            'blocking_task_ids': blocking_task_ids,
+            'blocked_reason': 'blocked_by_dependencies'
+            if blocking_task_ids
+            else None,
+        }
+
     def _refresh_downstream_readiness(self, task: Task) -> None:
         """После завершения задачи пересчитать готовность зависимых."""
         outgoing = self.dependency_model.select().where(
@@ -447,37 +634,15 @@ class TaskService:
 
         Задача готова ТОЛЬКО если:
         1. Статус задачи 'todo' (не in_progress, не completed, не blocked, не review)
-        2. У задачи нет входящих зависимостей, ИЛИ
-        3. Все задачи, от которых она зависит, выполнены (status = 'completed')
+        2. У задачи нет входящих блокирующих зависимостей, ИЛИ
+        3. Все блокирующие предки находятся в финальном статусе
         """
         # ========== 1. ПРОВЕРКА СТАТУСА ==========
         # Только задачи со статусом 'todo' могут быть готовы
         if task.status.name != 'todo':
             return False
 
-        # ========== 2. ПРОВЕРКА ЗАВИСИМОСТЕЙ ==========
-        # Получаем все входящие зависимости (задачи, от которых зависит текущая)
-        incoming = list(
-            self.dependency_model.select().where(
-                (self.dependency_model.project == task.project)
-                & (self.dependency_model.target_task == task)
-            )
-        )
-
-        # Если нет зависимостей - задача готова
-        if not incoming:
-            return True
-
-        # Проверяем каждую зависимость
-        for dep in incoming:
-            source_task = dep.source_task
-
-            # Если хотя бы одна исходная задача не выполнена - задача НЕ готова
-            if source_task.status.name != 'completed':
-                return False
-
-        # Все зависимости выполнены - задача готова
-        return True
+        return not self.get_blocking_task_ids(task)
 
     def check_downstream_tasks(self, task: Task):
         """
@@ -490,6 +655,209 @@ class TaskService:
 
         for dep in outgoing:
             self.check_task_readiness(dep.target_task)
+
+    # ------------------- Действия на зависимостях -------------------
+
+    def add_dependency_action(
+        self,
+        dependency: TaskDependency,
+        action_type_code: str,
+        created_by: User,
+        target_user: Optional[User] = None,
+        target_status_name: Optional[str] = None,
+        message_template: Optional[str] = None,
+        delay_minutes: int = 0,
+        execute_order: int = 0,
+    ) -> DependencyAction:
+        """Добавление действия, которое сработает при завершении source_task."""
+        from .ProjectService import ProjectService
+
+        project_service = ProjectService()
+        if not project_service.can_manage_task_graph(created_by, dependency.project):
+            raise PermissionError("You don't have permission to update dependencies")
+
+        action_type = self.get_action_type_or_raise(action_type_code)
+        target_status = None
+
+        if action_type.requires_target_user and not target_user:
+            raise ValueError(f"Action '{action_type_code}' requires target_user")
+        if action_type.requires_template and not message_template:
+            raise ValueError(f"Action '{action_type_code}' requires message_template")
+        if action_type.code == 'change_status':
+            if not target_status_name:
+                raise ValueError("Action 'change_status' requires target_status")
+            target_status = self.get_status_by_name(target_status_name)
+            if not target_status:
+                raise ValueError(f"Status '{target_status_name}' not found")
+
+        return self.action_model.create(
+            dependency=dependency,
+            action_type=action_type,
+            target_user=target_user,
+            target_status=target_status,
+            message_template=message_template,
+            delay_minutes=delay_minutes,
+            execute_order=execute_order,
+            is_active=True,
+        )
+
+    def get_action_type_or_raise(self, action_type_code: str) -> DependencyActionType:
+        """Получение типа действия с понятной ошибкой для API."""
+        self.ensure_default_action_types()
+        try:
+            return self.action_type_model.get(self.action_type_model.code == action_type_code)
+        except self.action_type_model.DoesNotExist:
+            allowed = ', '.join(
+                row.code for row in self.action_type_model.select().order_by(self.action_type_model.code)
+            )
+            raise ValueError(
+                f"UNKNOWN_ACTION_TYPE: Unknown action_type_code '{action_type_code}'. "
+                f'Allowed: {allowed}'
+            )
+
+    def remove_dependency_action(
+        self, action: DependencyAction, deleted_by: User
+    ) -> bool:
+        """Мягкое удаление действия на зависимости."""
+        from .ProjectService import ProjectService
+
+        project_service = ProjectService()
+        if not project_service.can_manage_task_graph(
+            deleted_by, action.dependency.project
+        ):
+            raise PermissionError("You don't have permission to update dependencies")
+
+        action.is_active = False
+        action.save()
+        return True
+
+    def _handle_task_completion(
+        self, task: Task, triggered_by: User
+    ) -> List[Dict[str, Any]]:
+        """Выполнить действия на исходящих зависимостях завершенной задачи."""
+        results = []
+        outgoing = (
+            self.dependency_model.select()
+            .where(
+                (self.dependency_model.project == task.project)
+                & (self.dependency_model.source_task == task)
+            )
+            .order_by(self.dependency_model.id)
+        )
+        for dependency in outgoing:
+            results.extend(
+                self.execute_dependency_actions(
+                    dependency=dependency,
+                    trigger_event='task_completed',
+                    triggered_by=triggered_by,
+                )
+            )
+        return results
+
+    def execute_dependency_actions(
+        self,
+        dependency: TaskDependency,
+        trigger_event: str,
+        triggered_by: User,
+    ) -> List[Dict[str, Any]]:
+        """Выполнение активных actions зависимости по execute_order."""
+        actions = (
+            self.action_model.select()
+            .where(
+                (self.action_model.dependency == dependency)
+                & (self.action_model.is_active == True)
+            )
+            .order_by(self.action_model.execute_order, self.action_model.id)
+        )
+        return [
+            self.execute_single_action(action, trigger_event, triggered_by)
+            for action in actions
+        ]
+
+    def execute_single_action(
+        self,
+        action: DependencyAction,
+        trigger_event: str,
+        triggered_by: User,
+    ) -> Dict[str, Any]:
+        """Выполнить или запланировать одно действие."""
+        if action.delay_minutes > 0:
+            scheduled_for = datetime.now() + timedelta(minutes=action.delay_minutes)
+            self.scheduled_model.create(
+                project=action.dependency.project,
+                task=action.dependency.target_task,
+                action_type='delayed_notification',
+                scheduled_for=scheduled_for,
+                payload=json.dumps(
+                    {
+                        'action_id': action.id,
+                        'trigger_event': trigger_event,
+                        'triggered_by': triggered_by.username,
+                    }
+                ),
+                dependency_action=action,
+            )
+            return {
+                'action_id': action.id,
+                'type': action.action_type.code,
+                'status': 'scheduled',
+                'scheduled_for': scheduled_for.isoformat(),
+            }
+
+        code = action.action_type.code
+        if code.startswith('notify_'):
+            target_user = self._resolve_notification_user(action)
+            if target_user:
+                self.send_task_notification(
+                    user=target_user,
+                    notification_type=code,
+                    task_data={
+                        'task_id': action.dependency.target_task_id,
+                        'task_name': action.dependency.target_task.name,
+                        'source_task_id': action.dependency.source_task_id,
+                        'source_task_name': action.dependency.source_task.name,
+                        'message_template': action.message_template,
+                    },
+                )
+            return {
+                'action_id': action.id,
+                'type': code,
+                'status': 'executed',
+                'target_user': target_user.username if target_user else None,
+            }
+
+        if code == 'change_status' and action.target_status:
+            target_task = action.dependency.target_task
+            old_status = target_task.status.name
+            target_task.status = action.target_status
+            target_task.save()
+            self.event_model.log(
+                task=target_task,
+                user=triggered_by,
+                event_type='status_changed_by_dependency',
+                old_value=old_status,
+                new_value=action.target_status.name,
+                metadata={'dependency_action_id': action.id},
+            )
+            return {
+                'action_id': action.id,
+                'type': code,
+                'status': 'executed',
+                'target_status': action.target_status.name,
+            }
+
+        return {'action_id': action.id, 'type': code, 'status': 'skipped'}
+
+    def _resolve_notification_user(self, action: DependencyAction) -> Optional[User]:
+        """Получатель уведомления для notify_* actions."""
+        code = action.action_type.code
+        if code == 'notify_assignee':
+            return action.dependency.target_task.assignee
+        if code == 'notify_creator':
+            return action.dependency.source_task.creator
+        if code == 'notify_custom':
+            return action.target_user
+        return None
 
     # ------------------- Уведомления -------------------
 
@@ -560,8 +928,7 @@ class TaskService:
 
         nodes = []
         for task in tasks:
-            # ВАЖНО: вычисляем is_ready для каждой задачи
-            is_ready = self.check_task_readiness(task)
+            readiness = self.get_readiness_info(task)
 
             nodes.append(
                 {
@@ -578,7 +945,9 @@ class TaskService:
                         'deadline': task.deadline.isoformat()
                         if task.deadline
                         else None,
-                        'is_ready': is_ready,  # <-- ИСПОЛЬЗУЕМ МЕТОД!
+                        'is_ready': readiness['is_ready'],
+                        'blocking_task_ids': readiness['blocking_task_ids'],
+                        'blocked_reason': readiness['blocked_reason'],
                     },
                     'position': {'x': task.position_x, 'y': task.position_y},
                 }
@@ -588,16 +957,58 @@ class TaskService:
         for dep in dependencies:
             edges.append(
                 {
-                    'id': f'e{dep.source_task_id}-{dep.target_task_id}',
+                    'id': f'dep-{dep.id}',
                     'source': str(dep.source_task_id),
                     'target': str(dep.target_task_id),
                     'type': dep.dependency_type,
-                    'data': {'description': dep.description},
-                    'animated': dep.dependency_type != 'simple',
+                    'data': {
+                        'dependency_id': dep.id,
+                        'description': dep.description,
+                        'actions': self._dependency_actions_payload(dep),
+                    },
+                    'animated': self.is_blocking_dependency_type(dep.dependency_type),
+                    'label': dep.edge_label
+                    or self.DEPENDENCY_TYPES.get(dep.dependency_type, {}).get('name'),
                 }
             )
 
-        return {'nodes': nodes, 'edges': edges, 'viewport': {'x': 0, 'y': 0, 'zoom': 1}}
+        viewport = {'x': 0, 'y': 0, 'zoom': 1}
+        if project.graph_data:
+            try:
+                viewport = json.loads(project.graph_data).get('viewport', viewport)
+            except (TypeError, json.JSONDecodeError):
+                pass
+
+        return {'nodes': nodes, 'edges': edges, 'viewport': viewport}
+
+    def _dependency_actions_payload(
+        self, dependency: TaskDependency
+    ) -> List[Dict[str, Any]]:
+        """Сериализация активных actions для ребра графа."""
+        actions = (
+            self.action_model.select()
+            .where(
+                (self.action_model.dependency == dependency)
+                & (self.action_model.is_active == True)
+            )
+            .order_by(self.action_model.execute_order, self.action_model.id)
+        )
+        return [
+            {
+                'id': action.id,
+                'action_type_code': action.action_type.code,
+                'target_user_username': action.target_user.username
+                if action.target_user
+                else None,
+                'target_status': action.target_status.name
+                if action.target_status
+                else None,
+                'message_template': action.message_template,
+                'delay_minutes': action.delay_minutes,
+                'execute_order': action.execute_order,
+            }
+            for action in actions
+        ]
 
     # ------------------- Отложенные действия -------------------
 

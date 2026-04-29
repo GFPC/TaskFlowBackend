@@ -87,6 +87,10 @@ class ProjectDetailResponse(ProjectResponse):
     can_edit_project: bool = False
     can_delete_project: bool = False
     can_create_tasks: bool = False
+    can_edit_tasks: bool = False
+    can_delete_tasks: bool = False
+    can_change_task_status: bool = False
+    can_manage_task_graph: bool = False
     settings: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)

@@ -80,6 +80,8 @@ class TaskResponse(BaseModel):
     position_x: float
     position_y: float
     is_ready: bool = False
+    blocking_task_ids: List[int] = Field(default_factory=list)
+    blocked_reason: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -110,6 +112,8 @@ class TaskResponse(BaseModel):
                 'position_x': data.position_x,
                 'position_y': data.position_y,
                 'is_ready': False,  # Будет обновлено отдельно
+                'blocking_task_ids': [],
+                'blocked_reason': None,
                 'metadata': data.metadata_dict,
             }
         return data
@@ -149,6 +153,64 @@ class TaskDependencyCreate(TaskDependencyBase):
     pass
 
 
+class TaskDependencyUpdate(BaseModel):
+    """Частичное обновление зависимости"""
+
+    dependency_type: Optional[str] = None
+    description: Optional[str] = None
+
+
+class DependencyActionCreate(BaseModel):
+    """Создание действия на зависимости"""
+
+    action_type_code: str
+    target_user_username: Optional[str] = None
+    target_status: Optional[str] = None
+    message_template: Optional[str] = None
+    delay_minutes: int = Field(0, ge=0)
+    execute_order: int = 0
+
+
+class DependencyActionResponse(BaseModel):
+    """Ответ с информацией о действии на зависимости"""
+
+    id: int
+    dependency_id: int
+    action_type_code: str
+    action_type_name: str
+    target_user_username: Optional[str] = None
+    target_status: Optional[str] = None
+    message_template: Optional[str] = None
+    delay_minutes: int
+    execute_order: int
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode='before')
+    @classmethod
+    def validate_action(cls, data):
+        """Преобразует объект DependencyAction в словарь"""
+        if hasattr(data, '__dict__'):
+            return {
+                'id': data.id,
+                'dependency_id': data.dependency_id,
+                'action_type_code': data.action_type.code if data.action_type else None,
+                'action_type_name': data.action_type.name if data.action_type else None,
+                'target_user_username': data.target_user.username
+                if data.target_user
+                else None,
+                'target_status': data.target_status.name
+                if data.target_status
+                else None,
+                'message_template': data.message_template,
+                'delay_minutes': data.delay_minutes,
+                'execute_order': data.execute_order,
+                'is_active': data.is_active,
+            }
+        return data
+
+
 class TaskDependencyResponse(BaseModel):
     """Ответ с информацией о зависимости"""
 
@@ -162,6 +224,7 @@ class TaskDependencyResponse(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     created_by_username: str
+    actions: List[DependencyActionResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -183,6 +246,12 @@ class TaskDependencyResponse(BaseModel):
                 'created_by_username': data.created_by.username
                 if data.created_by
                 else None,
+                'actions': sorted(
+                    [action for action in data.actions if action.is_active],
+                    key=lambda action: (action.execute_order, action.id),
+                )
+                if hasattr(data, 'actions')
+                else [],
             }
         return data
 
