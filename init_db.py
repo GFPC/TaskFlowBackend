@@ -12,6 +12,7 @@ from core.db.models.project import (
 from core.db.models.task import (
     DependencyAction,
     DependencyActionType,
+    Note,
     ScheduledAction,
     Task,
     TaskDependency,
@@ -52,6 +53,7 @@ def create_tables():
         TaskDependency,
         DependencyAction,
         TaskEvent,
+        Note,
         ScheduledAction,
     ]
 
@@ -71,6 +73,7 @@ def drop_tables():
 
     all_models = [
         ScheduledAction,
+        Note,
         TaskEvent,
         DependencyAction,
         TaskDependency,

@@ -8,17 +8,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ...db.models.project import Project
 from ...db.models.task import Task
 from ...db.models.user import User
+from ...services.NoteService import NoteService
 from ...services.ProjectService import ProjectService
 from ...services.TaskService import TaskService
 from ...services.TeamService import TeamService
 from ...services.UserService import UserService
 from ..deps import (
     get_current_active_user,
+    get_note_service,
     get_project_service,
     get_task_service,
     get_team_service,
     get_user_service,
 )
+from ..schemas.note import NoteCreate, NoteResponse
 from ..schemas.project import ProjectGraphData
 from ..schemas.task import (
     DependencyActionCreate,
@@ -105,6 +108,20 @@ def permission_error_response(error: PermissionError) -> HTTPException:
     if 'create' in lowered:
         return forbidden_response('task_create_forbidden', message)
     return forbidden_response('task_field_edit_forbidden', message)
+
+
+def note_forbidden_response(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={'error_code': 'note_forbidden', 'message': message},
+    )
+
+
+def note_not_found_response(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={'error_code': 'note_not_found', 'message': message},
+    )
 
 
 async def get_project_by_slug(
@@ -531,6 +548,56 @@ async def get_project_tasks(
         result.append(task_response_with_readiness(task, task_service))
 
     return result
+
+
+@router.get('/{task_id}/notes', response_model=List[NoteResponse])
+async def get_task_notes(
+    project_slug: str,
+    task_id: int,
+    current_user: User = Depends(get_current_active_user),
+    note_service: NoteService = Depends(get_note_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+) -> Any:
+    """Получение заметок задачи."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        notes = note_service.list_task_notes(project, task_id, current_user)
+        return [NoteResponse.model_validate(note) for note in notes]
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+    except ValueError as e:
+        raise note_not_found_response(str(e))
+
+
+@router.post('/{task_id}/notes', response_model=NoteResponse)
+async def create_task_note(
+    project_slug: str,
+    task_id: int,
+    note_in: NoteCreate,
+    current_user: User = Depends(get_current_active_user),
+    note_service: NoteService = Depends(get_note_service),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+) -> Any:
+    """Создание заметки задачи."""
+    try:
+        project = await get_project_by_slug(
+            project_slug, project_service, team_service, current_user
+        )
+        note = note_service.create_task_note(
+            project=project,
+            task_id=task_id,
+            author=current_user,
+            content=note_in.content,
+        )
+        return NoteResponse.model_validate(note)
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+    except ValueError as e:
+        raise note_not_found_response(str(e))
 
 
 @router.get('/{task_id}', response_model=TaskDetailResponse)

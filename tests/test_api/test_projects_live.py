@@ -587,8 +587,7 @@ class TestProjectsLive:
 
         # 2. Принимаем приглашение - ИСПРАВЛЕНО!
         response = requests.post(
-            f'{BASE_URL}/projects/{self.project_slug}/invitations/{self.invitation_id}/accept',
-            # Добавлен project_slug!
+            f'{BASE_URL}/projects/invitations/{self.invitation_id}/accept',
             headers=self.member_headers,
         )
 
@@ -614,8 +613,7 @@ class TestProjectsLive:
 
         # 2. Отклоняем приглашение - ИСПРАВЛЕНО!
         response = requests.post(
-            f'{BASE_URL}/projects/{self.project_slug}/invitations/{self.invitation_id}/decline',
-            # Добавлен project_slug!
+            f'{BASE_URL}/projects/invitations/{self.invitation_id}/decline',
             headers=self.member_headers,
         )
 

@@ -413,7 +413,8 @@ class TestTaskUpdate(TestTasksLive):
         )
 
         assert response.status_code == 403
-        assert 'developer cannot change task name' in response.text.lower()
+        data = response.json()
+        assert data['detail']['error_code'] == 'task_field_edit_forbidden'
 
     def test_12_assignee_can_change_status(self):
         """Исполнитель может менять статус задачи"""
@@ -514,8 +515,6 @@ class TestTaskDependencies(TestTasksLive):
         print(
             f'Dependency created with ID: {self.dependency_id} in project {self.dependency_project_slug}'
         )
-
-        return data
 
     def test_17_create_duplicate_dependency(self):
         """Создание дублирующейся зависимости"""
@@ -999,14 +998,13 @@ class TestTaskDeletion(TestTasksLive):
         )
         assert get_response.status_code == 404
 
-    def test_32_delete_task_by_creator(self):
-        """Удаление задачи создателем (developer)"""
-        # 1. СОЗДАЕМ задачу от имени DEVELOPER
+    def test_32_developer_cannot_create_or_delete_task(self):
+        """Developer не может создавать/удалять задачи по новой матрице прав"""
         task_name = f'Task by assignee {random_string()}'
 
         create_response = requests.post(
             f'{BASE_URL}/projects/{self.test_project_slug}/tasks',
-            headers=self.assignee_headers,  # <-- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!
+            headers=self.assignee_headers,
             json={
                 'name': task_name,
                 'description': 'Task created by developer',
@@ -1014,31 +1012,16 @@ class TestTaskDeletion(TestTasksLive):
             },
         )
 
-        # Проверяем, что задача создалась
-        assert create_response.status_code == 201
-        task = create_response.json()
-        assert (
-            task['creator_username'] == self.assignee_username
-        )  # Создатель - assignee!
-        print(f'Task created by developer: {task["id"]} - {task["name"]}')
+        assert create_response.status_code == 403
+        assert create_response.json()['detail']['error_code'] == 'task_create_forbidden'
 
-        # 2. УДАЛЯЕМ задачу от имени создателя (того же developer)
+        owner_task = self.create_test_task('Task protected from developer delete')
         delete_response = requests.delete(
-            f'{BASE_URL}/projects/{self.test_project_slug}/tasks/{task["id"]}',
+            f'{BASE_URL}/projects/{self.test_project_slug}/tasks/{owner_task["id"]}',
             headers=self.assignee_headers,
         )
 
-        assert delete_response.status_code == 200
-        assert 'successfully deleted' in delete_response.text.lower()
-        print(f'Task deleted by creator (developer)')
-
-        # 3. Проверяем, что задача действительно удалена
-        get_response = requests.get(
-            f'{BASE_URL}/projects/{self.test_project_slug}/tasks/{task["id"]}',
-            headers=self.owner_headers,
-        )
-        assert get_response.status_code == 404
-        print(f'Task confirmed deleted')
+        assert delete_response.status_code == 403
 
     def test_33_delete_task_no_permission(self):
         """Удаление чужой задачи без прав"""

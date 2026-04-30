@@ -8,15 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ...db.models.project import Project, ProjectInvitation, ProjectMember
 from ...db.models.user import User
+from ...services.NoteService import NoteService
 from ...services.ProjectService import ProjectService
 from ...services.TeamService import TeamService
 from ...services.UserService import UserService
 from ..deps import (
     get_current_active_user,
+    get_note_service,
     get_project_service,
     get_team_service,
     get_user_service,
 )
+from ..schemas.note import NoteCreate, NoteResponse, NoteUpdate
 from ..schemas.project import (
     ProjectCreate,
     ProjectDetailResponse,
@@ -89,6 +92,114 @@ async def find_project_by_slug(
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND, detail='Project not found'
     )
+
+
+def note_forbidden_response(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={'error_code': 'note_forbidden', 'message': message},
+    )
+
+
+def note_not_found_response(message: str = 'Note not found') -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={'error_code': 'note_not_found', 'message': message},
+    )
+
+
+# ==================== ЗАМЕТКИ ПРОЕКТА ====================
+
+
+@router.get('/{project_slug}/notes', response_model=List[NoteResponse])
+async def get_project_notes(
+    project_slug: str,
+    current_user: User = Depends(get_current_active_user),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> Any:
+    """Получение заметок проекта."""
+    try:
+        project = await find_project_by_slug(
+            project_slug, project_service, team_service, current_user, True
+        )
+        notes = note_service.list_project_notes(project, current_user)
+        return [NoteResponse.model_validate(note) for note in notes]
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+
+
+@router.post('/{project_slug}/notes', response_model=NoteResponse)
+async def create_project_note(
+    project_slug: str,
+    note_in: NoteCreate,
+    current_user: User = Depends(get_current_active_user),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> Any:
+    """Создание заметки проекта."""
+    try:
+        project = await find_project_by_slug(
+            project_slug, project_service, team_service, current_user, True
+        )
+        note = note_service.create_project_note(
+            project=project, author=current_user, content=note_in.content
+        )
+        return NoteResponse.model_validate(note)
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+
+
+@router.put('/{project_slug}/notes/{note_id}', response_model=NoteResponse)
+async def update_note(
+    project_slug: str,
+    note_id: int,
+    note_in: NoteUpdate,
+    current_user: User = Depends(get_current_active_user),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> Any:
+    """Обновление проектной или задачной заметки."""
+    try:
+        project = await find_project_by_slug(
+            project_slug, project_service, team_service, current_user, True
+        )
+        note = note_service.update_note(
+            project=project,
+            note_id=note_id,
+            user=current_user,
+            content=note_in.content,
+        )
+        return NoteResponse.model_validate(note)
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+    except ValueError as e:
+        raise note_not_found_response(str(e))
+
+
+@router.delete('/{project_slug}/notes/{note_id}')
+async def delete_note(
+    project_slug: str,
+    note_id: int,
+    current_user: User = Depends(get_current_active_user),
+    project_service: ProjectService = Depends(get_project_service),
+    team_service: TeamService = Depends(get_team_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> Any:
+    """Удаление проектной или задачной заметки."""
+    try:
+        project = await find_project_by_slug(
+            project_slug, project_service, team_service, current_user, True
+        )
+        note_service.delete_note(project=project, note_id=note_id, user=current_user)
+        return {'message': 'Note successfully deleted'}
+    except PermissionError as e:
+        raise note_forbidden_response(str(e))
+    except ValueError as e:
+        raise note_not_found_response(str(e))
 
 
 # ==================== АРХИВАЦИЯ ====================

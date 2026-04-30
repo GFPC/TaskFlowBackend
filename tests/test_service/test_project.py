@@ -19,6 +19,7 @@ from core.db.models.project import (
 from core.db.models.task import (
     DependencyAction,
     DependencyActionType,
+    Note,
     ScheduledAction,
     Task,
     TaskDependency,
@@ -56,6 +57,7 @@ def test_db():
         TaskDependency,
         DependencyAction,
         TaskEvent,
+        Note,
         ScheduledAction,  # Потом основные таблицы
     ]
 
@@ -626,7 +628,7 @@ class TestProjectPermissions:
             added_by=team_owner,
         )
 
-        assert project_service.can_create_tasks(team_member, test_project) is True
+        assert project_service.can_create_tasks(team_member, test_project) is False
 
         project_service.change_member_role(
             project=test_project,
@@ -637,7 +639,7 @@ class TestProjectPermissions:
 
         assert project_service.can_create_tasks(team_member, test_project) is False
 
-    def test_can_edit_task_developer(
+    def test_can_edit_task_developer_forbidden(
         self,
         project_service,
         test_project,
@@ -661,7 +663,8 @@ class TestProjectPermissions:
             assignee=team_member,
         )
 
-        assert project_service.can_edit_task(team_member, task) is True
+        assert project_service.can_edit_task(team_member, task) is False
+        assert project_service.can_change_task_status(team_member, task) is True
 
         other_task = Task.create(
             project=test_project,

@@ -307,7 +307,40 @@ class TaskEvent(BaseModel):
         )
 
 
-# ------------------- 7. Запланированные действия -------------------
+# ------------------- 7. Заметки -------------------
+
+
+class Note(BaseModel):
+    """Заметки проекта или задачи"""
+
+    id = AutoField()
+    scope_type = CharField(
+        max_length=20,
+        choices=[('project', 'Project'), ('task', 'Task')],
+        index=True,
+    )
+    project = ForeignKeyField(Project, backref='notes', on_delete='CASCADE')
+    task = ForeignKeyField(Task, backref='notes', null=True, on_delete='CASCADE')
+    author = ForeignKeyField(User, backref='notes', on_delete='RESTRICT')
+    content = TextField()
+    created_at = DateTimeField(default=datetime.now, index=True)
+    updated_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'notes'
+        indexes = (
+            (('project', 'scope_type', 'created_at'), False),
+            (('task', 'created_at'), False),
+            (('author', 'created_at'), False),
+        )
+
+    def save(self, *args, **kwargs):
+        if self.id:
+            self.updated_at = datetime.now()
+        return super(Note, self).save(*args, **kwargs)
+
+
+# ------------------- 8. Запланированные действия -------------------
 
 
 class ScheduledAction(BaseModel):

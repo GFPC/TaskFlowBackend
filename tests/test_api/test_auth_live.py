@@ -43,12 +43,12 @@ class TestAuthLive:
         data = response.json()
         assert data['requires_verification'] is True
         assert 'user_id' in data
-        assert 'tg_code' in data
-        assert len(data['tg_code']) == 6
+        assert 'verification_code' in data
+        assert 'email_sent' in data
 
         # Сохраняем для следующих тестов
         self.user_id = data['user_id']
-        self.tg_code = data['tg_code']
+        self.verification_code = data.get('verification_code')
 
     def test_2_register_duplicate(self):
         """Тест регистрации с существующим username"""
@@ -81,12 +81,13 @@ class TestAuthLive:
             json={'username': self.username, 'password': self.password},
         )
 
-        # API возвращает 401 для неверифицированных пользователей?
-        # Или должно быть 200 с requires_verification=True?
-        # Судя по ошибке - возвращает 401
-        assert response.status_code == 401
+        assert response.status_code == 200
         data = response.json()
-        assert 'detail' in data
+        if data['requires_verification']:
+            assert data['user_id'] == self.user_id
+        else:
+            # DEBUG servers may auto-verify email on first login.
+            assert 'access_token' in data
 
     def test_4_login_wrong_password(self):
         """Тест входа с неверным паролем"""
@@ -237,10 +238,20 @@ class TestAuthFullFlow:
             json={'username': username, 'password': password},
         )
 
-        # API возвращает 401 для неверифицированных
-        assert login_response.status_code == 401
+        assert login_response.status_code == 200
+        login_data = login_response.json()
+        if login_data['requires_verification'] is False:
+            assert 'access_token' in login_data
 
-        # 3. Инициация восстановления пароля (если работает)
+        # 3. Подтверждение email через debug endpoint, если сервер запущен в DEBUG.
+        verify_response = requests.post(
+            f'{BASE_URL}/api/v1/auth/test/verify/{user_id}',
+        )
+        if verify_response.status_code == 404:
+            pytest.skip('Debug verify endpoint disabled on this server')
+        assert verify_response.status_code == 200
+
+        # 4. Инициация восстановления пароля (если работает)
         recovery_response = requests.post(
             f'{BASE_URL}/api/v1/auth/recovery/initiate', json={'username': username}
         )
@@ -253,7 +264,7 @@ class TestAuthFullFlow:
             assert recovery_data['success'] is True
             assert 'recovery_code' in recovery_data
 
-            # 4. Сброс пароля
+            # 5. Сброс пароля
             new_password = 'NewPass456!'
             reset_response = requests.post(
                 f'{BASE_URL}/api/v1/auth/recovery/reset',
@@ -266,14 +277,14 @@ class TestAuthFullFlow:
             assert reset_response.status_code == 200
             assert 'Password successfully reset' in reset_response.text
 
-            # 5. Логин с новым паролем
+            # 6. Логин с новым паролем
             new_login_response = requests.post(
                 f'{BASE_URL}/api/v1/auth/login',
                 json={'username': username, 'password': new_password},
             )
 
-            # Все еще не верифицирован,所以 должен быть 401
-            assert new_login_response.status_code == 401
+            assert new_login_response.status_code == 200
+            assert new_login_response.json()['requires_verification'] is False
 
 
 if __name__ == '__main__':

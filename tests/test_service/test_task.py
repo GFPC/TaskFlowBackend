@@ -19,6 +19,7 @@ from core.db.models.project import (
 from core.db.models.task import (
     DependencyAction,
     DependencyActionType,
+    Note,
     ScheduledAction,
     Task,
     TaskDependency,
@@ -55,6 +56,7 @@ def test_db():
         TaskDependency,
         DependencyAction,
         TaskEvent,
+        Note,
         ScheduledAction,
     ]
 
@@ -108,8 +110,6 @@ def test_user(test_db, user_role):
         email='ivanov@test.com',
         role=user_role,
         is_active=True,
-        tg_verified=True,
-        tg_chat_id=123456,
     )
 
 
@@ -123,8 +123,6 @@ def second_user(test_db, user_role):
         email='petrov@test.com',
         role=user_role,
         is_active=True,
-        tg_verified=True,
-        tg_chat_id=123457,
     )
 
 
@@ -244,11 +242,11 @@ def test_task(task_service, test_project, project_owner, todo_status):
 
 
 @pytest.fixture
-def second_task(task_service, test_project, project_developer, todo_status):
+def second_task(task_service, test_project, project_owner, project_developer, todo_status):
     result = task_service.create_task(
         project=test_project,
         name='Second Task',
-        creator=project_developer,
+        creator=project_owner['user'],
         description='Second Description',
         assignee=project_developer,
     )
@@ -519,17 +517,19 @@ class TestDependencies:
                 created_by=project_owner['user'],
             )
 
-    def test_create_dependency_developer_can(
+    def test_create_dependency_developer_forbidden(
         self, task_service, test_task, second_task, project_developer
     ):
-        dependency = task_service.create_dependency(
-            source_task=second_task,
-            target_task=test_task,
-            created_by=project_developer,
-            dependency_type='simple',
-        )
-
-        assert dependency is not None
+        with pytest.raises(
+            PermissionError,
+            match="You don't have permission to create dependencies for this task",
+        ):
+            task_service.create_dependency(
+                source_task=second_task,
+                target_task=test_task,
+                created_by=project_developer,
+                dependency_type='simple',
+            )
 
     def test_delete_dependency(
         self, task_service, test_task, second_task, project_owner

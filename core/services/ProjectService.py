@@ -200,7 +200,10 @@ class ProjectService:
             raise ValueError(f"Role '{role_name}' not found")
 
         if existing:
-            # Если участник существует, активируем его заново
+            if existing.is_active:
+                raise ValueError('User is already a member of this project')
+
+            # Если участник был удален, активируем его заново
             existing.role = role
             existing.created_by = added_by
             existing.is_active = True

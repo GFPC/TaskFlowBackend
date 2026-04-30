@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..db.models.user import User
+from ..services.NoteService import NoteService
 from ..services.ProjectService import ProjectService  # Добавлено
 from ..services.TaskService import TaskService  # Добавлено
 from ..services.TeamService import TeamService  # Добавлено
@@ -38,6 +39,12 @@ def get_project_service() -> Generator:
 def get_task_service() -> Generator:
     """Dependency для TaskService"""
     service = TaskService()
+    yield service
+
+
+def get_note_service() -> Generator:
+    """Dependency для NoteService"""
+    service = NoteService()
     yield service
 
 

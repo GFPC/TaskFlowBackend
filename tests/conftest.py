@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 
 import pytest
-from peewee import SqliteDatabase
+from peewee import OperationalError, SqliteDatabase
 
 # Добавляем корневую директорию в PYTHONPATH
 root_dir = Path(__file__).parent.parent
@@ -89,8 +89,11 @@ def test_db_session():
 @pytest.fixture(autouse=True)
 def cleanup_db():
     """Очищаем данные между тестами."""
-    User.delete().execute()
-    AuthSession.delete().execute()
-    RecoveryCode.delete().execute()
-    AuthLog.delete().execute()
+    for model in (AuthLog, AuthSession, RecoveryCode, User):
+        try:
+            if model.table_exists():
+                model.delete().execute()
+        except OperationalError:
+            # Service-level tests temporarily rebind models to their own DB.
+            pass
     yield
