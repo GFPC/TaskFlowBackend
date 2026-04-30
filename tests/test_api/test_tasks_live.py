@@ -70,7 +70,7 @@ class TestTasksLive:
         # Сохраняем project_slug для использования во всех тестах
         self.test_project_slug = self.project_slug
 
-        print(f'\n✅ Setup complete!')
+        print(f'\nSetup complete!')
         print(f'   Team slug: {self.team_slug}')
         print(f'   Project slug: {self.test_project_slug}')
         print(f'{"=" * 60}\n')
@@ -512,7 +512,7 @@ class TestTaskDependencies(TestTasksLive):
         self.dependency_id = data['id']
         self.dependency_project_slug = self.test_project_slug
         print(
-            f'✅ Dependency created with ID: {self.dependency_id} in project {self.dependency_project_slug}'
+            f'Dependency created with ID: {self.dependency_id} in project {self.dependency_project_slug}'
         )
 
         return data
@@ -621,7 +621,7 @@ class TestDependencyActions(TestTasksLive):
         self.dependency_id = dep_response.json()['id']
         self.dependency_project_slug = self.test_project_slug
         print(
-            f'✅ Dependency created with ID: {self.dependency_id} in project {self.dependency_project_slug}'
+            f'Dependency created with ID: {self.dependency_id} in project {self.dependency_project_slug}'
         )
 
     def test_22_add_notify_assignee_action(self):
@@ -910,7 +910,7 @@ class TestTaskReadiness(TestTasksLive):
 
         assert data_c2['is_ready'] is False  # Все еще не готова
 
-        print(f'\n✅ Test passed!')
+        print(f'\nTest passed!')
 
 
 # ==================== ТЕСТЫ СТАТИСТИКИ ====================
@@ -1020,7 +1020,7 @@ class TestTaskDeletion(TestTasksLive):
         assert (
             task['creator_username'] == self.assignee_username
         )  # Создатель - assignee!
-        print(f'✅ Task created by developer: {task["id"]} - {task["name"]}')
+        print(f'Task created by developer: {task["id"]} - {task["name"]}')
 
         # 2. УДАЛЯЕМ задачу от имени создателя (того же developer)
         delete_response = requests.delete(
@@ -1030,7 +1030,7 @@ class TestTaskDeletion(TestTasksLive):
 
         assert delete_response.status_code == 200
         assert 'successfully deleted' in delete_response.text.lower()
-        print(f'✅ Task deleted by creator (developer)')
+        print(f'Task deleted by creator (developer)')
 
         # 3. Проверяем, что задача действительно удалена
         get_response = requests.get(
@@ -1038,7 +1038,7 @@ class TestTaskDeletion(TestTasksLive):
             headers=self.owner_headers,
         )
         assert get_response.status_code == 404
-        print(f'✅ Task confirmed deleted')
+        print(f'Task confirmed deleted')
 
     def test_33_delete_task_no_permission(self):
         """Удаление чужой задачи без прав"""

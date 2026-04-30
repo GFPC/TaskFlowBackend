@@ -74,7 +74,7 @@ class TestProjectsLive:
         print(f'\n6. Creating project: {self.project_name}')
         self.create_test_project()
 
-        print(f'\n✅ Setup complete!')
+        print(f'\nSetup complete!')
         print(f'   Team slug: {self.team_slug}')
         print(f'   Project slug: {self.project_slug}')
         print(f'{"=" * 60}\n')
@@ -439,7 +439,7 @@ class TestProjectsLive:
         print(f'   Members count: {members_count}')
         assert members_count == 2
 
-        print(f'\n✅ Test passed!')
+        print(f'\nTest passed!')
 
     def test_16_add_member_already_member(self):
         """Добавление уже существующего участника"""
@@ -557,7 +557,7 @@ class TestProjectsLive:
 
         # 1. Гарантируем, что участник в команде
         self.ensure_member_in_team(self.member_username)
-        print(f'✅ Member {self.member_username} is in team')
+        print(f'Member {self.member_username} is in team')
 
         # 2. Создаем приглашение
         print(f'\nCreating invitation for {self.member_username}...')
@@ -578,7 +578,7 @@ class TestProjectsLive:
         assert data['status'] == 'pending'
 
         self.invitation_id = data['id']
-        print(f'✅ Invitation created: {self.invitation_id}')
+        print(f'Invitation created: {self.invitation_id}')
 
     def test_24_accept_invitation(self):
         """Принятие приглашения в проект"""
@@ -741,7 +741,7 @@ class TestProjectsLive:
 
         assert get_response2.status_code == 200
         assert get_response2.json()['status'] == 'archived'
-        print(f'\n✅ Project successfully archived!')
+        print(f'\nProject successfully archived!')
 
     def test_30_restore_project(self):
         """Восстановление проекта из архива - с диагностикой"""
@@ -792,4 +792,4 @@ class TestProjectsLive:
 
         assert get_response.status_code == 200
         assert get_response.json()['status'] == 'active'
-        print(f'\n✅ Project successfully restored!')
+        print(f'\nProject successfully restored!')

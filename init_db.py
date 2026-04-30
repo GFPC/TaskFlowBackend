@@ -57,9 +57,9 @@ def create_tables():
 
     try:
         database.create_tables(all_models)
-        print('✅ All tables created successfully!')
+        print('All tables created successfully!')
     except Exception as e:
-        print(f'❌ Error creating tables: {e}')
+        print(f'Error creating tables: {e}')
         raise
 
 
@@ -94,9 +94,9 @@ def drop_tables():
 
     try:
         database.drop_tables(all_models)
-        print('✅ All tables dropped successfully!')
+        print('All tables dropped successfully!')
     except Exception as e:
-        print(f'❌ Error dropping tables: {e}')
+        print(f'Error dropping tables: {e}')
         raise
 
 
@@ -156,12 +156,12 @@ def create_user_roles():
             name=role_data['name'], defaults=role_data
         )
         if created:
-            print(f'  ✅ Created user role: {role.name}')
+            print(f'  Created user role: {role.name}')
             created_count += 1
         else:
-            print(f'  ⏺️ User role already exists: {role.name}')
+            print(f'  User role already exists: {role.name}')
 
-    print(f'\n✅ Total user roles created: {created_count}')
+    print(f'\nTotal user roles created: {created_count}')
     return created_count
 
 
@@ -210,12 +210,12 @@ def create_team_roles():
             name=role_data['name'], defaults=role_data
         )
         if created:
-            print(f'  ✅ Created team role: {role.name}')
+            print(f'  Created team role: {role.name}')
             created_count += 1
         else:
-            print(f'  ⏺️ Team role already exists: {role.name}')
+            print(f'  Team role already exists: {role.name}')
 
-    print(f'\n✅ Total team roles created: {created_count}')
+    print(f'\nTotal team roles created: {created_count}')
     return created_count
 
 
@@ -297,12 +297,12 @@ def create_project_roles():
             name=role_data['name'], defaults=role_data
         )
         if created:
-            print(f'  ✅ Created project role: {role.name}')
+            print(f'  Created project role: {role.name}')
             created_count += 1
         else:
-            print(f'  ⏺️ Project role already exists: {role.name}')
+            print(f'  Project role already exists: {role.name}')
 
-    print(f'\n✅ Total project roles created: {created_count}')
+    print(f'\nTotal project roles created: {created_count}')
     return created_count
 
 
@@ -364,12 +364,12 @@ def create_task_statuses():
             name=status_data['name'], defaults=status_data
         )
         if created:
-            print(f'  ✅ Created task status: {status.display_name}')
+            print(f'  Created task status: {status.display_name}')
             created_count += 1
         else:
-            print(f'  ⏺️ Task status already exists: {status.display_name}')
+            print(f'  Task status already exists: {status.display_name}')
 
-    print(f'\n✅ Total task statuses created: {created_count}')
+    print(f'\nTotal task statuses created: {created_count}')
     return created_count
 
 
@@ -431,12 +431,12 @@ def create_dependency_action_types():
             code=type_data['code'], defaults=type_data
         )
         if created:
-            print(f'  ✅ Created action type: {action_type.name}')
+            print(f'  Created action type: {action_type.name}')
             created_count += 1
         else:
-            print(f'  ⏺️ Action type already exists: {action_type.name}')
+            print(f'  Action type already exists: {action_type.name}')
 
-    print(f'\n✅ Total action types created: {created_count}')
+    print(f'\nTotal action types created: {created_count}')
     return created_count
 
 
@@ -469,7 +469,7 @@ def create_initial_admin():
         )
 
         if existing:
-            print(f'  ⏺️ Admin user already exists: {admin_username}')
+            print(f'  Admin user already exists: {admin_username}')
             return False
 
         # Создаем администратора
@@ -501,16 +501,16 @@ def create_initial_admin():
             ),
         )
 
-        print(f'  ✅ Created admin user: {admin.username}')
+        print(f'  Created admin user: {admin.username}')
         print(f'     Email: {admin.email}')
         print(f'     Password: {admin_password} (change on first login!)')
         return True
 
     except UserRole.DoesNotExist:
-        print("  ❌ User role 'Хозяин' not found. Create roles first!")
+        print("User role 'Хозяин' not found. Create roles first!")
         return False
     except Exception as e:
-        print(f'  ❌ Error creating admin user: {e}')
+        print(f'  Error creating admin user: {e}')
         return False
 
 
@@ -524,16 +524,16 @@ def init_database(clean=False):
     Args:
         clean: Если True - сначала удаляет все таблицы
     """
-    print('\n' + '🚀' * 30)
-    print('🚀   TASKFLOW DATABASE INITIALIZATION   🚀')
-    print('🚀' * 30 + '\n')
+    print('\n' + '*' * 30)
+    print('TASKFLOW DATABASE INITIALIZATION')
+    print('*' * 30 + '\n')
 
     # Подключаемся к базе
     try:
         database.connect()
-        print('✅ Connected to database')
+        print('Connected to database')
     except Exception as e:
-        print(f'❌ Failed to connect to database: {e}')
+        print(f'Failed to connect to database: {e}')
         return
 
     # Опционально: чистая инициализация
@@ -544,9 +544,9 @@ def init_database(clean=False):
     create_tables()
 
     # Создаем все справочники
-    print('\n' + '📚' * 30)
-    print('📚   CREATING REFERENCE DATA   📚')
-    print('📚' * 30)
+    print('\n' + '*' * 30)
+    print('CREATING REFERENCE DATA')
+    print('*' * 30)
 
     create_user_roles()
     create_team_roles()
@@ -555,17 +555,17 @@ def init_database(clean=False):
     create_dependency_action_types()
 
     # Опционально: создаем админа
-    print('\n' + '👑' * 30)
-    print('👑   ADMIN USER CREATION   👑')
-    print('👑' * 30)
+    print('\n' + '*' * 30)
+    print('ADMIN USER CREATION')
+    print('*' * 30)
     create_initial_admin()
 
     # Закрываем соединение
     database.close()
 
-    print('\n' + '✨' * 30)
-    print('✨   DATABASE INITIALIZATION COMPLETE!   ✨')
-    print('✨' * 30 + '\n')
+    print('\n' + '*' * 30)
+    print('DATABASE INITIALIZATION COMPLETE!')
+    print('*' * 30 + '\n')
 
     print('Summary:')
     print('  - Users: User, UserRole, AuthSession, RecoveryCode, AuthLog')
@@ -574,7 +574,7 @@ def init_database(clean=False):
     print(
         '  - Tasks: Task, TaskStatus, TaskDependency, DependencyAction, DependencyActionType, TaskEvent, ScheduledAction'
     )
-    print('\n✅ All done!')
+    print('\nAll done!')
 
 
 if __name__ == '__main__':
@@ -583,9 +583,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TaskFlow Database Initialization')
     parser.add_argument(
         '--clean', action='store_true', help='Drop all tables before creation'
-    )
-    parser.add_argument(
-        '--no-admin', action='store_true', help='Skip admin user creation'
     )
 
     args = parser.parse_args()

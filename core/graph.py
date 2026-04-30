@@ -646,7 +646,7 @@ def generate_complex_task_graph_ultra_fast(storage, num_tasks=5000, num_edges=15
         except (struct.error, ValueError):
             continue
 
-    print(f'\n✅ Generated {edge_count} complex task dependencies')
+    print(f'\nGenerated {edge_count} complex task dependencies')
     return task_ids, task_metadata
 
 
@@ -769,14 +769,14 @@ def ultra_fast_demo():
     )
     gen_time = time.time() - start_gen
 
-    print(f'\n📊 Graph Statistics:')
+    print(f'\nGraph Statistics:')
     print(f'  Total edges: {storage.num_edges}')
     print(f'  Storage size: {storage.buffer_size / 1024:.1f} KB')
     print(f'  Bytes per edge: {storage.buffer_size / max(1, storage.num_edges):.1f}')
     print(f'  Total vertices: {len(storage.get_vertices())}')
     print(f'  Generation time: {gen_time:.2f}s')
 
-    print(f'\n🔍 Graph Analysis:')
+    print(f'\nGraph Analysis:')
 
     start = time.time()
     is_dag = GraphAlgorithms.is_dag(storage)
@@ -805,7 +805,7 @@ def ultra_fast_demo():
             cycle_str = ' → '.join(map(str, cycles[0][:5]))
             print(f'  First cycle: {cycle_str}... (len={len(cycles[0])})')
 
-    print(f'\n⚡ Performance Test:')
+    print(f'\nPerformance Test:')
 
     start = time.perf_counter()
     out_edges, in_edges = storage.adjacency_lists_fast()
@@ -825,16 +825,16 @@ def ultra_fast_demo():
                 f'  Shortest path ({v1} → {v2}): {dist:.0f}h, {len(path)} steps, {path_time * 1000:.3f} ms'
             )
 
-    print(f'\n💾 Memory Efficiency:')
+    print(f'\nMemory Efficiency:')
     json_est = storage.num_edges * 200
     print(f'  JSON: {json_est / 1024:.1f} KB')
     print(f'  Binary: {storage.buffer_size / 1024:.1f} KB')
     print(f'  Ratio: {json_est / storage.buffer_size:.1f}x')
 
     total_time = time.time() - start_gen
-    print(f'\n⏱️  Total demo time: {total_time:.2f}s')
+    print(f'\nTotal demo time: {total_time:.2f}s')
     print(f'\n{"=" * 60}')
-    print(f'✅ ULTRA FAST Demo complete!')
+    print(f'ULTRA FAST Demo complete!')
 
 
 if __name__ == '__main__':

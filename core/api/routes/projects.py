@@ -47,42 +47,38 @@ async def find_project_by_slug(
     include_archived: bool = False,
 ) -> Project:
     """Поиск проекта по slug среди команд пользователя"""
-    logger.info(f"🔍 FIND_PROJECT: Looking for project '{project_slug}'")
-    logger.info(
-        f'🔍 FIND_PROJECT: User: {current_user.username} (ID: {current_user.id})'
-    )
-    logger.info(f'🔍 FIND_PROJECT: Include archived: {include_archived}')
+    logger.info(f"FIND_PROJECT: Looking for project '{project_slug}'")
+    logger.info(f'FIND_PROJECT: User: {current_user.username} (ID: {current_user.id})')
+    logger.info(f'FIND_PROJECT: Include archived: {include_archived}')
 
     # Получаем все команды пользователя
     user_teams = team_service.get_user_teams(current_user)
-    logger.info(f'🔍 FIND_PROJECT: User has {len(user_teams)} teams')
+    logger.info(f'FIND_PROJECT: User has {len(user_teams)} teams')
 
     for i, team in enumerate(user_teams):
         logger.info(
-            f'🔍 FIND_PROJECT: Checking team {i + 1}/{len(user_teams)}: {team.slug} (ID: {team.id})'
+            f'FIND_PROJECT: Checking team {i + 1}/{len(user_teams)}: {team.slug} (ID: {team.id})'
         )
 
         project = project_service.get_project_by_slug(project_slug, team)
 
         if project:
-            logger.info(f'✅ FIND_PROJECT: Found project in team {team.slug}')
+            logger.info(f'FIND_PROJECT: Found project in team {team.slug}')
             logger.info(f'   Project ID: {project.id}')
             logger.info(f'   Project name: {project.name}')
             logger.info(f'   Project status: {project.status}')
             logger.info(f'   Project archived_at: {project.archived_at}')
 
             if include_archived:
-                logger.info(
-                    f'🔍 FIND_PROJECT: Returning project (include_archived=True)'
-                )
+                logger.info(f'FIND_PROJECT: Returning project (include_archived=True)')
                 return project
 
             if project.status == 'active':
-                logger.info(f'🔍 FIND_PROJECT: Returning active project')
+                logger.info(f'FIND_PROJECT: Returning active project')
                 return project
             else:
                 logger.info(
-                    f'🔍 FIND_PROJECT: Project is {project.status}, but include_archived=False'
+                    f'FIND_PROJECT: Project is {project.status}, but include_archived=False'
                 )
         else:
             logger.info(
@@ -645,7 +641,7 @@ async def create_invitation(
             proposed_role_name=invitation_in.role,
             team_member=team_member,
         )
-        logger.info(f'✅ Invitation created: {invitation.id}')
+        logger.info(f'Invitation created: {invitation.id}')
 
         return ProjectInvitationResponse.model_validate(invitation)
 
@@ -838,9 +834,7 @@ async def get_project_by_slug(
             'can_create_tasks': project_service.can_create_tasks(current_user, project),
             'can_edit_tasks': project_service.can_manage_tasks(current_user, project),
             'can_delete_tasks': project_service.can_manage_tasks(current_user, project),
-            'can_change_task_status': project_service.is_member(
-                current_user, project
-            ),
+            'can_change_task_status': project_service.is_member(current_user, project),
             'can_manage_task_graph': project_service.can_manage_task_graph(
                 current_user, project
             ),
