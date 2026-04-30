@@ -566,7 +566,9 @@ async def get_task_by_id(
     ]
     task_data.events = [
         TaskEventResponse.model_validate(event)
-        for event in task.events.order_by(task_service.event_model.created_at.desc()).limit(50)
+        for event in task.events.order_by(
+            task_service.event_model.created_at.desc()
+        ).limit(50)
     ]
 
     return task_data
